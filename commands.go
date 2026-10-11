@@ -11,14 +11,15 @@ import (
 
 // Read a separate snapshot: the event worker owns the live device store.
 func mqttCommand(baseTopic, topic string, payload []byte, devicesPath string) (string, error) {
-	if topic == baseTopic {
+	baseTopic = strings.TrimRight(baseTopic, "/")
+	if topic == baseTopic+"/set" {
 		return validateCommand(string(payload))
 	}
 	prefix := strings.TrimRight(baseTopic, "/") + "/"
-	if !strings.HasPrefix(topic, prefix) {
+	if !strings.HasPrefix(topic, prefix) || !strings.HasSuffix(topic, "/set") {
 		return "", fmt.Errorf("unexpected command topic %q", topic)
 	}
-	target := strings.TrimPrefix(topic, prefix)
+	target := strings.TrimSuffix(strings.TrimPrefix(topic, prefix), "/set")
 	var request struct {
 		Command string   `json:"command"`
 		Value   *int     `json:"value"`

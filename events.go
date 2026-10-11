@@ -174,7 +174,8 @@ func parseNameReply(lines []string) (string, error) {
 
 func normalizeName(name string) string {
 	name = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(name)), " ", "-")
-	if strings.ContainsAny(name, "+#\x00\r\n") {
+	// Reserve the command suffix so a published state cannot actuate a device.
+	if name == "set" || strings.HasSuffix(name, "/set") || strings.ContainsAny(name, "+#\x00\r\n") {
 		return ""
 	}
 	return name

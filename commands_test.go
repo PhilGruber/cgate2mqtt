@@ -21,13 +21,13 @@ func TestMQTTJSONCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ topic, payload, want string }{
-		{"cbus/commands/JERV/bedroom/tv", `{"command":"ramp","value":255,"time":4}`, "ramp //JERV/254/56/35 255 4"},
-		{"cbus/commands/JERV/bedroom/tv", `{"command":"on"}`, "on //JERV/254/56/35"},
-		{"cbus/commands/OTHER/bedroom/tv", `{"command":"off"}`, "off //OTHER/254/56/35"},
-		{"cbus/commands/JERV/254/56/35", `{"command":"ramp","value":0}`, "ramp //JERV/254/56/35 0"},
-		{"cbus/commands", "on 254/56/35", "on 254/56/35"},
+		{"cbus/JERV/bedroom/tv/set", `{"command":"ramp","value":255,"time":4}`, "ramp //JERV/254/56/35 255 4"},
+		{"cbus/JERV/bedroom/tv/set", `{"command":"on"}`, "on //JERV/254/56/35"},
+		{"cbus/OTHER/bedroom/tv/set", `{"command":"off"}`, "off //OTHER/254/56/35"},
+		{"cbus/JERV/254/56/35/set", `{"command":"ramp","value":0}`, "ramp //JERV/254/56/35 0"},
+		{"cbus/set", "on 254/56/35", "on 254/56/35"},
 	} {
-		got, err := mqttCommand("cbus/commands", tc.topic, []byte(tc.payload), path)
+		got, err := mqttCommand("cbus", tc.topic, []byte(tc.payload), path)
 		if err != nil || got != tc.want {
 			t.Fatalf("%s %s: got %q, %v; want %q", tc.topic, tc.payload, got, err, tc.want)
 		}
@@ -35,12 +35,12 @@ func TestMQTTJSONCommands(t *testing.T) {
 	for _, payload := range []string{
 		`not json`, `null`, `{}`, `{"command":"ramp"}`, `{"command":"ramp","value":256}`, `{"command":"ramp","value":-1}`, `{"command":"ramp","value":1.5}`, `{"command":"ramp","value":1,"time":-1}`, `{"command":"ramp","value":1,"time":1021}`, `{"command":"on","time":4}`, `{"command":"off","value":0}`, `{"command":"noop"}`, `{"command":"on","extra":1}`, `{"command":"on"} {}`, `{"command":"on\noff"}`,
 	} {
-		if got, err := mqttCommand("cbus/commands", "cbus/commands/JERV/bedroom/tv", []byte(payload), path); err == nil {
+		if got, err := mqttCommand("cbus", "cbus/JERV/bedroom/tv/set", []byte(payload), path); err == nil {
 			t.Errorf("accepted %s as %q", payload, got)
 		}
 	}
-	for _, topic := range []string{"cbus/commands/JERV/missing", "other/JERV/bedroom/tv"} {
-		if _, err := mqttCommand("cbus/commands", topic, []byte(`{"command":"on"}`), path); err == nil {
+	for _, topic := range []string{"cbus/JERV/missing/set", "other/JERV/bedroom/tv/set", "cbus/JERV/bedroom/tv", "cbus", "cbus/JERV/bedroom/tv/set/extra"} {
+		if _, err := mqttCommand("cbus", topic, []byte(`{"command":"on"}`), path); err == nil {
 			t.Errorf("accepted %q", topic)
 		}
 	}
@@ -48,13 +48,13 @@ func TestMQTTJSONCommands(t *testing.T) {
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mqttCommand("cbus/commands", "cbus/commands/JERV/bedroom/tv", []byte(`{"command":"on"}`), path); err == nil {
+	if _, err := mqttCommand("cbus", "cbus/JERV/bedroom/tv/set", []byte(`{"command":"on"}`), path); err == nil {
 		t.Fatal("accepted ambiguous name")
 	}
 	if err := os.WriteFile(path, []byte(strings.ReplaceAll(data, "bedroom/tv", "new/name")), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mqttCommand("cbus/commands", "cbus/commands/JERV/bedroom/tv", []byte(`{"command":"on"}`), path); err == nil {
+	if _, err := mqttCommand("cbus", "cbus/JERV/bedroom/tv/set", []byte(`{"command":"on"}`), path); err == nil {
 		t.Fatal("used stale names")
 	}
 }

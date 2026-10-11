@@ -33,8 +33,8 @@ func main() {
 	flag.StringVar(&cfg.commandsAddr, "cgate-commands", "localhost:20023", "C-Gate command address")
 	flag.StringVar(&cfg.broker, "mqtt", "tcp://localhost:1883", "MQTT broker URL")
 	flag.StringVar(&cfg.clientID, "client-id", "cbus2mqtt", "unique MQTT client ID")
-	flag.StringVar(&cfg.eventsTopic, "events-topic", "cbus/events", "MQTT event topic")
-	flag.StringVar(&cfg.commandsTopic, "commands-topic", "cbus/commands", "MQTT command base topic (no wildcards)")
+	flag.StringVar(&cfg.eventsTopic, "events-topic", "cbus", "MQTT event base topic")
+	flag.StringVar(&cfg.commandsTopic, "commands-topic", "cbus", "MQTT command base topic (commands end in /set; no wildcards)")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -58,8 +58,10 @@ func waitToken(ctx context.Context, token mqtt.Token) error {
 }
 
 func run(ctx context.Context, cfg config) error {
-	if cfg.eventsTopic == "" || cfg.commandsTopic == "" || strings.ContainsAny(cfg.eventsTopic+cfg.commandsTopic, "+#\x00") || cfg.eventsTopic == cfg.commandsTopic || strings.HasPrefix(cfg.commandsTopic, strings.TrimRight(cfg.eventsTopic, "/")+"/") || strings.HasPrefix(cfg.eventsTopic, strings.TrimRight(cfg.commandsTopic, "/")+"/") {
-		return errors.New("event and command topics must be nonempty exact MQTT topics; command topic must be outside the event topic subtree")
+	cfg.eventsTopic = strings.TrimRight(cfg.eventsTopic, "/")
+	cfg.commandsTopic = strings.TrimRight(cfg.commandsTopic, "/")
+	if cfg.eventsTopic == "" || cfg.commandsTopic == "" || strings.ContainsAny(cfg.eventsTopic+cfg.commandsTopic, "+#\x00") {
+		return errors.New("event and command topic prefixes must be nonempty MQTT topics without wildcards")
 	}
 	devices, err := loadDevices("devices.yaml")
 	if err != nil {
@@ -137,9 +139,13 @@ func run(ctx context.Context, cfg config) error {
 		defer func() { done <- struct{}{} }()
 		workerErr := forwardCommands(ctx, commandConn, commands, cfg.verbose, func() error {
 			if cfg.verbose {
-				log.Printf("MQTT subscribe: topics=%q, %q", cfg.commandsTopic, strings.TrimRight(cfg.commandsTopic, "/")+"/#")
+				log.Printf("MQTT subscribe: topic=%q", cfg.commandsTopic+"/#")
 			}
-			return waitToken(ctx, client.SubscribeMultiple(map[string]byte{cfg.commandsTopic: 1, strings.TrimRight(cfg.commandsTopic, "/") + "/#": 1}, func(_ mqtt.Client, msg mqtt.Message) {
+			return waitToken(ctx, client.Subscribe(cfg.commandsTopic+"/#", 1, func(_ mqtt.Client, msg mqtt.Message) {
+				// MQTT filters cannot match a suffix after a variable-depth device path.
+				if !strings.HasSuffix(msg.Topic(), "/set") {
+					return
+				}
 				log.Printf("MQTT command received: topic=%q payload=%q", msg.Topic(), string(msg.Payload()))
 				// Retained commands must never actuate devices on startup.
 				if msg.Retained() {

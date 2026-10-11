@@ -13,7 +13,7 @@ func TestDevicePersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := eventMapper{baseTopic: "cbus/events", names: map[string]string{}, record: store.record, lookup: func(string) (string, error) { return "", errors.New("no name") }}
+	m := eventMapper{baseTopic: "cbus", names: map[string]string{}, record: store.record, lookup: func(string) (string, error) { return "", errors.New("no name") }}
 	for i := 0; i < 2; i++ {
 		if _, _, err := m.message("lighting on //HOME/1/56/1"); err != nil {
 			t.Fatal(err)
@@ -37,7 +37,7 @@ func TestDevicePersistence(t *testing.T) {
 	m.record = loaded.record
 	m.lookup = func(string) (string, error) { t.Fatal("looked up custom name"); return "", nil }
 	topic, _, err := m.message("lighting off //HOME/1/56/1")
-	if err != nil || topic != "cbus/events/HOME/my-kitchen" {
+	if err != nil || topic != "cbus/HOME/my-kitchen" {
 		t.Fatalf("topic %q: %v", topic, err)
 	}
 	if err := loaded.record("//HOME/1/56/2", "living-room"); err != nil {
@@ -120,11 +120,11 @@ func TestDeviceFriendlyNameMQTTTopics(t *testing.T) {
 	for _, tc := range []struct {
 		name, savedName, lookupName, wantTopic string
 	}{
-		{"saved friendly name", "My Kitchen", "C-Gate Kitchen", "cbus/events/HOME/my-kitchen"},
-		{"saved topic path", "bedroom/tv", "", "cbus/events/HOME/bedroom/tv"},
-		{"discovered topic path", "", "Bedroom/TV", "cbus/events/HOME/bedroom/tv"},
-		{"discovered friendly name", "", "Living Room", "cbus/events/HOME/living-room"},
-		{"address fallback", "", "", "cbus/events/HOME/1/56/1"},
+		{"saved friendly name", "My Kitchen", "C-Gate Kitchen", "cbus/HOME/my-kitchen"},
+		{"saved topic path", "bedroom/tv", "", "cbus/HOME/bedroom/tv"},
+		{"discovered topic path", "", "Bedroom/TV", "cbus/HOME/bedroom/tv"},
+		{"discovered friendly name", "", "Living Room", "cbus/HOME/living-room"},
+		{"address fallback", "", "", "cbus/HOME/1/56/1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "devices.yaml")
@@ -135,7 +135,7 @@ func TestDeviceFriendlyNameMQTTTopics(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			mapper := eventMapper{baseTopic: "cbus/events", names: store.names, refresh: store.reload, record: store.record, lookup: func(string) (string, error) {
+			mapper := eventMapper{baseTopic: "cbus", names: store.names, refresh: store.reload, record: store.record, lookup: func(string) (string, error) {
 				if tc.savedName != "" {
 					t.Fatal("looked up device with saved friendly name")
 				}

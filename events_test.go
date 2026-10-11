@@ -7,7 +7,7 @@ import (
 
 func TestNamedEvents(t *testing.T) {
 	lookups := 0
-	m := eventMapper{baseTopic: "cbus/events", names: make(map[string]string), lookup: func(address string) (string, error) {
+	m := eventMapper{baseTopic: "cbus", names: make(map[string]string), lookup: func(address string) (string, error) {
 		lookups++
 		if address != "//JERV/254/56/22" {
 			t.Fatalf("lookup address %q", address)
@@ -19,7 +19,7 @@ func TestNamedEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if topic != "cbus/events/JERV/living-room" || payload != `{"command":"`+state+`"}` {
+		if topic != "cbus/JERV/living-room" || payload != `{"command":"`+state+`"}` {
 			t.Fatalf("got %q %q", topic, payload)
 		}
 	}
@@ -54,7 +54,7 @@ func TestNameLookupFallbackAndRetry(t *testing.T) {
 }
 
 func TestOtherEventsUnchanged(t *testing.T) {
-	m := eventMapper{baseTopic: "cbus/events", lookup: func(string) (string, error) {
+	m := eventMapper{baseTopic: "cbus", lookup: func(string) (string, error) {
 		t.Fatal("unexpected lookup")
 		return "", nil
 	}}
@@ -87,7 +87,7 @@ func TestParseNameReply(t *testing.T) {
 }
 
 func TestParsedEventArguments(t *testing.T) {
-	m := eventMapper{baseTopic: "cbus/events", names: map[string]string{"//JERV/254/56/22": "room"}}
+	m := eventMapper{baseTopic: "cbus", names: map[string]string{"//JERV/254/56/22": "room"}}
 	for _, tc := range []struct{ line, want string }{
 		{"lighting ramp //JERV/254/56/22 0 4 # source metadata", `{"command":"ramp","value":0,"time":4}`},
 		{"lighting ramp //JERV/254/56/22 128 0.5#comment", `{"command":"ramp","value":128,"time":0.5}`},
@@ -114,7 +114,7 @@ func TestParsedEventArguments(t *testing.T) {
 
 func TestFriendlyNameTopicPath(t *testing.T) {
 	m := eventMapper{
-		baseTopic: "cbus/events",
+		baseTopic: "cbus",
 		names:     map[string]string{"//JERV/254/56/35": "bedroom/tv"},
 		lookup: func(string) (string, error) {
 			t.Fatal("looked up address with saved friendly name")
@@ -122,7 +122,7 @@ func TestFriendlyNameTopicPath(t *testing.T) {
 		},
 	}
 	topic, payload, err := m.message("lighting on //JERV/254/56/35")
-	if err != nil || topic != "cbus/events/JERV/bedroom/tv" || payload != `{"command":"on"}` {
+	if err != nil || topic != "cbus/JERV/bedroom/tv" || payload != `{"command":"on"}` {
 		t.Fatalf("got %q %q, %v", topic, payload, err)
 	}
 }
@@ -131,7 +131,7 @@ func TestNormalizeNameTopicPaths(t *testing.T) {
 	if got := normalizeName(" Bedroom/TV "); got != "bedroom/tv" {
 		t.Fatalf("got %q", got)
 	}
-	for _, name := range []string{"bedroom/+", "bedroom/#", "bedroom\x00tv", "bedroom\ntv", "bedroom\rtv"} {
+	for _, name := range []string{"set", "bedroom/set", "bedroom/+", "bedroom/#", "bedroom\x00tv", "bedroom\ntv", "bedroom\rtv"} {
 		if got := normalizeName(name); got != "" {
 			t.Errorf("accepted invalid name %q as %q", name, got)
 		}
@@ -139,7 +139,7 @@ func TestNormalizeNameTopicPaths(t *testing.T) {
 }
 
 func TestClockEvents(t *testing.T) {
-	m := eventMapper{baseTopic: "cbus/events/", lookup: func(string) (string, error) {
+	m := eventMapper{baseTopic: "cbus/", lookup: func(string) (string, error) {
 		t.Fatal("clock event triggered a name lookup")
 		return "", nil
 	}}
@@ -151,7 +151,7 @@ func TestClockEvents(t *testing.T) {
 		{"clock time //JERV/254/223 17:06:39", `{"command":"time","value":"17:06:39"}`},
 	} {
 		topic, payload, err := m.message(tc.line)
-		if err != nil || topic != "cbus/events/JERV/254/223" || payload != tc.want {
+		if err != nil || topic != "cbus/JERV/254/223" || payload != tc.want {
 			t.Errorf("%q: got %q %q, %v", tc.line, topic, payload, err)
 		}
 	}
