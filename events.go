@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Only the command worker reads replies from the command socket.
@@ -27,6 +28,9 @@ func (m *eventMapper) message(line string) (string, string, error) {
 	line, _, _ = strings.Cut(line, "#")
 	line = strings.TrimSpace(line)
 	fields := strings.Fields(line)
+	if len(fields) >= 3 && fields[0] == "clock" && (fields[1] == "date" || fields[1] == "time") && strings.HasPrefix(fields[2], "//") {
+		return m.clockMessage(line, fields)
+	}
 	// Status-change events have the form: lighting on //PROJECT/net/app/group.
 	// Preserve other event formats on the base topic.
 	if len(fields) < 3 || fields[0] != "lighting" || !strings.HasPrefix(fields[2], "//") {
@@ -98,6 +102,55 @@ func (m *eventMapper) message(line string) (string, string, error) {
 		path = strings.Join(parts, "/")
 	}
 	return strings.TrimRight(m.baseTopic, "/") + "/" + path, string(payload), nil
+}
+
+func (m *eventMapper) clockMessage(line string, fields []string) (string, string, error) {
+	parts := strings.Split(strings.TrimPrefix(fields[2], "//"), "/")
+	if len(parts) != 3 {
+		return m.baseTopic, line, nil
+	}
+	for _, part := range parts {
+		if part == "" || strings.ContainsAny(part, "+#\x00") {
+			return m.baseTopic, line, nil
+		}
+	}
+	if len(fields) < 4 || len(fields) > 5 {
+		return "", "", fmt.Errorf("invalid clock event arguments: %s", line)
+	}
+	layout := "2006-01-02"
+	if fields[1] == "time" {
+		layout = "15:04:05"
+	}
+	parsed, err := time.Parse(layout, fields[3])
+	if err != nil || parsed.Format(layout) != fields[3] {
+		return "", "", fmt.Errorf("invalid clock %s value %q", fields[1], fields[3])
+	}
+	status := struct {
+		Command        string `json:"command"`
+		Value          string `json:"value"`
+		DayOfWeek      *int   `json:"day_of_week,omitempty"`
+		DaylightSaving *int   `json:"daylight_saving,omitempty"`
+	}{Command: fields[1], Value: fields[3]}
+	if len(fields) == 5 {
+		flag, err := strconv.Atoi(fields[4])
+		max := 6
+		if fields[1] == "time" {
+			max = 1
+		}
+		if err != nil || flag < 0 || flag > max {
+			return "", "", fmt.Errorf("invalid clock %s flag %q", fields[1], fields[4])
+		}
+		if fields[1] == "date" {
+			status.DayOfWeek = &flag
+		} else {
+			status.DaylightSaving = &flag
+		}
+	}
+	payload, err := json.Marshal(status)
+	if err != nil {
+		return "", "", fmt.Errorf("encode clock event: %w", err)
+	}
+	return strings.TrimRight(m.baseTopic, "/") + "/" + strings.Join(parts, "/"), string(payload), nil
 }
 
 func parseNameReply(lines []string) (string, error) {

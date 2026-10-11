@@ -2,7 +2,7 @@
 
 A Go service with two main forwarding goroutines:
 
-- C-Gate lighting status changes → JSON published to MQTT `cbus/events/<project>/<name>` (QoS 1, not retained). Other event lines remain on `cbus/events`.
+- C-Gate lighting status changes → JSON published to MQTT `cbus/events/<project>/<name>` (QoS 1, not retained). Clock date/time updates publish JSON to `cbus/events/<project>/<network>/<application>`. Other event lines remain on `cbus/events`.
 - MQTT `cbus/commands/<project>/<friendly_name>` → JSON commands resolved through `devices.yaml` and sent to C-Gate. Raw commands are also accepted on `cbus/commands`. Replies are consumed and logged.
 
 The MQTT library runs its own network goroutines. The command worker subscribes after receiving C-Gate's ready greeting.
@@ -47,3 +47,5 @@ go test -race ./...
 ```
 
 Protocol references: [Clipsal C-Gate command connection example](https://updates.clipsal.com/ClipsalSoftwareDownload/mainsite/cis/__data/page/4129/AN06-037-1_C-GateOnAMacOperatingSystem.pdf), [Eclipse Paho MQTT client](https://github.com/eclipse-paho/paho.mqtt.golang).
+
+Clock events use the application address directly without a device name lookup. `clock date //JERV/254/223 2026-10-11 6` publishes `{"command":"date","value":"2026-10-11","day_of_week":6}` to `cbus/events/JERV/254/223`. `clock time //JERV/254/223 17:06:39 1` publishes `{"command":"time","value":"17:06:39","daylight_saving":1}` to the same topic. The [C-Gate server guide](https://manualzz.com/doc/23261582/c-gate-server-guide) defines day of week as 0–6 (Monday–Sunday) and daylight saving as 0 or 1. Dates and times remain strings; supplied flags are numeric, including zero.

@@ -137,3 +137,35 @@ func TestNormalizeNameTopicPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestClockEvents(t *testing.T) {
+	m := eventMapper{baseTopic: "cbus/events/", lookup: func(string) (string, error) {
+		t.Fatal("clock event triggered a name lookup")
+		return "", nil
+	}}
+	for _, tc := range []struct{ line, want string }{
+		{"clock date //JERV/254/223 2026-10-11 6", `{"command":"date","value":"2026-10-11","day_of_week":6}`},
+		{"clock time //JERV/254/223 17:06:39 1", `{"command":"time","value":"17:06:39","daylight_saving":1}`},
+		{"clock date //JERV/254/223 2026-10-12 0 # comment", `{"command":"date","value":"2026-10-12","day_of_week":0}`},
+		{"clock time //JERV/254/223 00:00:00 0", `{"command":"time","value":"00:00:00","daylight_saving":0}`},
+		{"clock time //JERV/254/223 17:06:39", `{"command":"time","value":"17:06:39"}`},
+	} {
+		topic, payload, err := m.message(tc.line)
+		if err != nil || topic != "cbus/events/JERV/254/223" || payload != tc.want {
+			t.Errorf("%q: got %q %q, %v", tc.line, topic, payload, err)
+		}
+	}
+	for _, line := range []string{
+		"clock date //JERV/254/223 2026-02-30 6",
+		"clock date //JERV/254/223 2026-10-11 7",
+		"clock time //JERV/254/223 24:00:00 1",
+		"clock time //JERV/254/223 17:06:39 2",
+		"clock time //JERV/254/223 17:06:39 bad",
+		"clock time //JERV/254/223 17:06:39 1 extra",
+		"clock date //JERV/254/223",
+	} {
+		if _, _, err := m.message(line); err == nil {
+			t.Errorf("accepted %q", line)
+		}
+	}
+}
