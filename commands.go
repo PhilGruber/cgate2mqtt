@@ -62,7 +62,7 @@ func mqttCommand(baseTopic, topic string, payload []byte, devicesPath string) (s
 			continue
 		}
 		name := normalizeName(d.FriendlyName)
-		if (name == "" || target != parts[0]+"/"+name) && target != strings.Join(parts, "/") {
+		if (name == "" || target != name) && target != strings.Join(parts, "/") {
 			continue
 		}
 		if address != "" && address != d.Address {

@@ -19,7 +19,7 @@ func TestNamedEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if topic != "cbus/JERV/living-room" || payload != `{"command":"`+state+`"}` {
+		if topic != "cbus/living-room" || payload != `{"command":"`+state+`"}` {
 			t.Fatalf("got %q %q", topic, payload)
 		}
 	}
@@ -48,7 +48,7 @@ func TestNameLookupFallbackAndRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if topic != "custom/events/JERV/kitchen" {
+	if topic != "custom/events/kitchen" {
 		t.Fatalf("retry topic: %q", topic)
 	}
 }
@@ -122,7 +122,7 @@ func TestFriendlyNameTopicPath(t *testing.T) {
 		},
 	}
 	topic, payload, err := m.message("lighting on //JERV/254/56/35")
-	if err != nil || topic != "cbus/JERV/bedroom/tv" || payload != `{"command":"on"}` {
+	if err != nil || topic != "cbus/bedroom/tv" || payload != `{"command":"on"}` {
 		t.Fatalf("got %q %q, %v", topic, payload, err)
 	}
 }

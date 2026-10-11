@@ -119,7 +119,7 @@ func (m *eventMapper) message(line string) (string, string, error) {
 		}
 	}
 	name = normalizeName(m.names[address])
-	path := parts[0] + "/" + name
+	path := name
 	if name == "" {
 		path = strings.Join(parts, "/")
 	}

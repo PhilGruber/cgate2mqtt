@@ -37,7 +37,7 @@ func TestDevicePersistence(t *testing.T) {
 	m.record = loaded.record
 	m.lookup = func(string) (string, error) { t.Fatal("looked up custom name"); return "", nil }
 	topic, _, err := m.message("lighting off //HOME/1/56/1")
-	if err != nil || topic != "cbus/HOME/my-kitchen" {
+	if err != nil || topic != "cbus/my-kitchen" {
 		t.Fatalf("topic %q: %v", topic, err)
 	}
 	if err := loaded.record("//HOME/1/56/2", "living-room"); err != nil {
@@ -149,7 +149,7 @@ func TestDeviceReloadBeforeRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	topic, _, err := mapper.message("lighting on //HOME/1/56/1")
-	if err != nil || topic != "events/HOME/my-kitchen" {
+	if err != nil || topic != "events/my-kitchen" {
 		t.Fatalf("topic %q: %v", topic, err)
 	}
 	invalid := "invalid: ["
@@ -169,10 +169,10 @@ func TestDeviceFriendlyNameMQTTTopics(t *testing.T) {
 	for _, tc := range []struct {
 		name, savedName, lookupName, wantTopic string
 	}{
-		{"saved friendly name", "My Kitchen", "C-Gate Kitchen", "cbus/HOME/my-kitchen"},
-		{"saved topic path", "bedroom/tv", "", "cbus/HOME/bedroom/tv"},
-		{"discovered topic path", "", "Bedroom/TV", "cbus/HOME/bedroom/tv"},
-		{"discovered friendly name", "", "Living Room", "cbus/HOME/living-room"},
+		{"saved friendly name", "My Kitchen", "C-Gate Kitchen", "cbus/my-kitchen"},
+		{"saved topic path", "bedroom/tv", "", "cbus/bedroom/tv"},
+		{"discovered topic path", "", "Bedroom/TV", "cbus/bedroom/tv"},
+		{"discovered friendly name", "", "Living Room", "cbus/living-room"},
 		{"address fallback", "", "", "cbus/HOME/1/56/1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
