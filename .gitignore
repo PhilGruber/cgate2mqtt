@@ -25,9 +25,9 @@ profile.cov
 go.work
 go.work.sum
 
-.env
 .version
 bump-version-and-push-to-repo.zsh
+deb
 
 # Editor/IDE
 .idea/

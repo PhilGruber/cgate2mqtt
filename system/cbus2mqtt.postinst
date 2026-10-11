@@ -1,0 +1,38 @@
+#!/bin/bash
+set -e
+
+# Other maintainer-script actions must not change the installation.
+case "${1:-configure}" in
+    configure) ;;
+    *) exit 0 ;;
+esac
+
+if ! getent group cbus2mqtt >/dev/null; then
+    addgroup --system cbus2mqtt
+fi
+if ! getent passwd cbus2mqtt >/dev/null; then
+    adduser --system --ingroup cbus2mqtt --home /var/lib/cbus2mqtt \
+        --no-create-home --shell /usr/sbin/nologin cbus2mqtt
+fi
+
+mkdir -p /etc/cbus2mqtt /var/lib/cbus2mqtt
+
+CFG_DIR="/etc/cbus2mqtt"
+DEFAULTS_DIR="/usr/share/cbus2mqtt/defaults"
+
+CFG_FILES=(
+    "cbus2mqtt.conf.yaml"
+)
+
+for CFG_FILE in "${CFG_FILES[@]}"; do
+    FULL_CFG_FILE="${CFG_DIR}/${CFG_FILE}"
+    # Preserve every existing entry, including empty files and dangling symlinks.
+    # noclobber also protects against a file appearing after the existence check.
+    if [ ! -e "${FULL_CFG_FILE}" ] && [ ! -L "${FULL_CFG_FILE}" ] && [ -f "${EXAMPLE_FILE}" ]; then
+        (set -o noclobber; cat "${EXAMPLE_FILE}" > "${FULL_CFG_FILE}")
+    fi
+done
+
+chown -R cbus2mqtt:cbus2mqtt /etc/cbus2mqtt /var/lib/cbus2mqtt
+
+exit 0

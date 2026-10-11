@@ -1,0 +1,17 @@
+[Unit]
+Description=Dimmy home automation daemon
+After=network-online.target mosquitto.service
+Wants=network-online.target mosquitto.service
+
+[Service]
+Type=simple
+User=cbus2mqtt
+Group=cbus2mqtt
+ExecStart=/usr/bin/cbus2mqtt
+Restart=on-failure
+RestartSec=5s
+StandardOutput=append:/var/log/cbus2mqtt.log
+StandardError=append:/var/log/cbus2mqtt.log
+
+[Install]
+WantedBy=multi-user.target

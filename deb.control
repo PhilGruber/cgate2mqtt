@@ -1,0 +1,6 @@
+Package: cbus2mqtt
+Version: __version__
+Maintainer: Phil Gruber <phil@gruber.au>
+Architecture: __arch__
+Depends: adduser, lsb-base
+Description: Gatewate to translate commands between Schneider C-Gate v3 and MQTT
