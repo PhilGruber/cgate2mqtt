@@ -23,19 +23,19 @@ const operationTimeout = 10 * time.Second
 type config struct {
 	eventsAddr, commandsAddr, broker, clientID, eventsTopic, commandsTopic string
 	verbose                                                                bool
+	mqttUsername, mqttPassword                                             string
 }
 
 func main() {
 	log.SetOutput(os.Stdout)
-	var cfg config
-	flag.BoolVar(&cfg.verbose, "v", false, "also log outgoing C-Gate commands and MQTT subscriptions to stdout")
-	flag.StringVar(&cfg.eventsAddr, "cgate-events", "localhost:20025", "C-Gate event address")
-	flag.StringVar(&cfg.commandsAddr, "cgate-commands", "localhost:20023", "C-Gate command address")
-	flag.StringVar(&cfg.broker, "mqtt", "tcp://localhost:1883", "MQTT broker URL")
-	flag.StringVar(&cfg.clientID, "client-id", "cbus2mqtt", "unique MQTT client ID")
-	flag.StringVar(&cfg.eventsTopic, "events-topic", "cbus", "MQTT event base topic")
-	flag.StringVar(&cfg.commandsTopic, "commands-topic", "cbus", "MQTT command base topic (commands end in /set; no wildcards)")
-	flag.Parse()
+	cfg, err := parseConfig(os.Args[1:], "/etc/cbus2mqtt/cbus2mqtt.conf", os.Stderr)
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return
+		}
+		log.Print(err)
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, cfg); err != nil {
@@ -74,7 +74,7 @@ func run(ctx context.Context, cfg config) error {
 	failures := make(chan error, 3)
 	opts := mqtt.NewClientOptions().AddBroker(cfg.broker).SetClientID(cfg.clientID).
 		SetAutoReconnect(false).SetConnectTimeout(operationTimeout).SetWriteTimeout(operationTimeout)
-	opts.SetUsername(os.Getenv("MQTT_USERNAME")).SetPassword(os.Getenv("MQTT_PASSWORD"))
+	opts.SetUsername(cfg.mqttUsername).SetPassword(cfg.mqttPassword)
 	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
 		select {
 		case failures <- fmt.Errorf("MQTT disconnected: %w", err):

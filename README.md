@@ -19,6 +19,24 @@ go run . -v -cgate-events localhost:20024 -cgate-commands localhost:20023 -mqtt 
 
 Use `-events-topic`, `-commands-topic`, and `-client-id` to override defaults. Both topic prefixes default to `cbus` and must have no wildcards. Device command topics end in `/set`; device state topics have no suffix. Set `MQTT_USERNAME` and `MQTT_PASSWORD` for broker authentication. C-Gate must permit this host through its access configuration and have the desired project/networks open.
 
+All options can also be set in `/etc/cbus2mqtt/cbus2mqtt.conf`, using flag names without leading dashes:
+
+```ini
+v=false
+cgate-events=localhost:20025
+cgate-commands=localhost:20023
+mqtt=tcp://localhost:1883
+client-id=cbus2mqtt
+events-topic=cbus
+commands-topic=cbus
+mqtt-username=
+mqtt-password=
+```
+
+The file is optional. Command-line flags override file settings; file settings override built-in defaults and the `MQTT_USERNAME`/`MQTT_PASSWORD` environment variables. Credentials can also be set with `-mqtt-username` and `-mqtt-password`. Blank lines and lines starting with `#` are ignored. Whitespace around keys and values is trimmed; values are literal, without quotes or inline comments, and may contain `=` or `#`. Use `v=true` or `v=false` for verbose logging. Unknown keys, malformed lines, invalid values, and unreadable files stop startup with an error. Restrict file permissions if it contains credentials, while allowing the service user to read it.
+
+The Debian package installs the defaults to `/usr/share/cbus2mqtt/defaults/cbus2mqtt.conf` and creates `/etc/cbus2mqtt/cbus2mqtt.conf` only if it is missing. Installation and upgrades preserve existing config files, including empty files and symlinks.
+
 The default read connection uses C-Gate's event port, **20024**. Port **20025** is a different stream: status changes rendered as commands and comments. Use `-cgate-events localhost:20025` if you specifically want that format. Neither stream echoes every command submitted by other clients; event output also depends on C-Gate's configured event levels. See the [C-Gate server guide](https://manualzz.com/doc/23261582/c-gate-server-guide). Each received line is logged as `C-Gate event received` before publishing it to MQTT.
 
 For example, publish `on 1/56/1` to `cbus/set` to send that command to C-Gate. Payloads contain a single command, up to 4096 bytes; retained commands are ignored. QoS 1 can deliver duplicates, so prefer idempotent commands.

@@ -8,20 +8,14 @@ TEST_DIR=$(mktemp -d /tmp/cbus2mqtt-deb-test.XXXXXXXX)
 trap 'rm -rf -- "$TEST_DIR"' EXIT
 BUILD="$TEST_DIR/build"
 ROOT="$TEST_DIR/root"
-CONFIGS=(cbus2mqtt.conf.yaml rules.conf.yaml cbus2mqtt.conf)
+CONFIGS=(cbus2mqtt.conf)
 
-mkdir -p "$BUILD/html" "$ROOT" "$TEST_DIR/bin"
+mkdir -p "$BUILD" "$ROOT" "$TEST_DIR/bin"
 cp "$REPO/Makefile" "$REPO/deb.control" "$BUILD/"
 cp -R "$REPO/system" "$BUILD/system"
-for name in "${CONFIGS[@]}"; do
-    cp "$REPO/$name.example" "$BUILD/"
-done
-printf 'test page' > "$BUILD/html/index.html"
 # Packaging does not depend on binary contents; skip compilation.
-for name in cbus2mqtt cbus2mqtt; do
-    printf 'test binary' > "$BUILD/$name"
-done
-if ! make -C "$BUILD" -o all deb VERSION=0.0.0-test ARCH=all > "$TEST_DIR/build.log" 2>&1; then
+printf 'test binary' > "$BUILD/cbus2mqtt"
+if ! make -C "$BUILD" -o binary deb VERSION=0.0.0-test ARCH=all > "$TEST_DIR/build.log" 2>&1; then
     cat "$TEST_DIR/build.log" >&2
     exit 1
 fi
@@ -56,15 +50,12 @@ configure() {
 
 configure
 for name in "${CONFIGS[@]}"; do
-    cmp "$ROOT/etc/cbus2mqtt/$name" "$REPO/$name.example"
+    cmp "$ROOT/etc/cbus2mqtt/$name" "$REPO/system/$name"
 done
 
 CONFIG="$ROOT/etc/cbus2mqtt"
 DATABASE="$ROOT/var/lib/cbus2mqtt"
-printf 'custom configuration\n' > "$CONFIG/cbus2mqtt.conf.yaml"
-: > "$CONFIG/rules.conf.yaml"
-rm "$CONFIG/cbus2mqtt.conf"
-ln -s missing-local-config "$CONFIG/cbus2mqtt.conf"
+printf 'custom configuration\n' > "$CONFIG/cbus2mqtt.conf"
 # Local examples from older packages must also survive postinst.
 printf 'local example' > "$CONFIG/cbus2mqtt.conf.example"
 for name in cbus2mqtt.db cbus2mqtt.db-wal cbus2mqtt.db-shm; do
@@ -76,15 +67,26 @@ cp -a "$DATABASE" "$TEST_DIR/expected-database"
 for iteration in 1 2; do
     unpack
     configure
-    for name in cbus2mqtt.conf.yaml rules.conf.yaml cbus2mqtt.conf.example; do
+    for name in cbus2mqtt.conf cbus2mqtt.conf.example; do
         cmp "$CONFIG/$name" "$TEST_DIR/expected-config/$name"
     done
     for name in cbus2mqtt.db cbus2mqtt.db-wal cbus2mqtt.db-shm; do
         cmp "$DATABASE/$name" "$TEST_DIR/expected-database/$name"
     done
-    [[ -L "$CONFIG/cbus2mqtt.conf" ]]
-    [[ $(readlink "$CONFIG/cbus2mqtt.conf") == missing-local-config ]]
-    [[ ! -e "$CONFIG/missing-local-config" ]]
+
 done
+
+# Empty configurations and dangling symlinks must also survive upgrades.
+: > "$CONFIG/cbus2mqtt.conf"
+unpack
+configure
+[[ ! -s "$CONFIG/cbus2mqtt.conf" ]]
+rm "$CONFIG/cbus2mqtt.conf"
+ln -s missing-local-config "$CONFIG/cbus2mqtt.conf"
+unpack
+configure
+[[ -L "$CONFIG/cbus2mqtt.conf" ]]
+[[ $(readlink "$CONFIG/cbus2mqtt.conf") == missing-local-config ]]
+[[ ! -e "$CONFIG/missing-local-config" ]]
 
 echo 'Debian install test passed (fresh install and repeated upgrades).'

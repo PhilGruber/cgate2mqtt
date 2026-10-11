@@ -21,11 +21,12 @@ CFG_DIR="/etc/cbus2mqtt"
 DEFAULTS_DIR="/usr/share/cbus2mqtt/defaults"
 
 CFG_FILES=(
-    "cbus2mqtt.conf.yaml"
+    "cbus2mqtt.conf"
 )
 
 for CFG_FILE in "${CFG_FILES[@]}"; do
     FULL_CFG_FILE="${CFG_DIR}/${CFG_FILE}"
+    EXAMPLE_FILE="${DEFAULTS_DIR}/${CFG_FILE}"
     # Preserve every existing entry, including empty files and dangling symlinks.
     # noclobber also protects against a file appearing after the existence check.
     if [ ! -e "${FULL_CFG_FILE}" ] && [ ! -L "${FULL_CFG_FILE}" ] && [ -f "${EXAMPLE_FILE}" ]; then
