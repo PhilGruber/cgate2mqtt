@@ -15,8 +15,11 @@ func TestNamedEvents(t *testing.T) {
 		return "Living Room", nil
 	}}
 	for _, state := range []string{"on", "off"} {
-		topic, payload := m.message("lighting " + state + " //JERV/254/56/22")
-		if topic != "cbus/events/JERV/living-room" || payload != `{"lighting":"`+state+`"}` {
+		topic, payload, err := m.message("lighting " + state + " //JERV/254/56/22")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if topic != "cbus/events/JERV/living-room" || payload != `{"command":"`+state+`"}` {
 			t.Fatalf("got %q %q", topic, payload)
 		}
 	}
@@ -34,11 +37,17 @@ func TestNameLookupFallbackAndRetry(t *testing.T) {
 		}
 		return "Kitchen", nil
 	}}
-	topic, payload := m.message("lighting on //JERV/254/56/22")
-	if topic != "custom/events/JERV/254/56/22" || payload != `{"lighting":"on"}` {
+	topic, payload, err := m.message("lighting on //JERV/254/56/22")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if topic != "custom/events/JERV/254/56/22" || payload != `{"command":"on"}` {
 		t.Fatalf("fallback: %q %q", topic, payload)
 	}
-	topic, _ = m.message("lighting off //JERV/254/56/22")
+	topic, _, err = m.message("lighting off //JERV/254/56/22")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if topic != "custom/events/JERV/kitchen" {
 		t.Fatalf("retry topic: %q", topic)
 	}
@@ -49,8 +58,11 @@ func TestOtherEventsUnchanged(t *testing.T) {
 		t.Fatal("unexpected lookup")
 		return "", nil
 	}}
-	for _, line := range []string{"# comment", "lighting on //JERV/254", "lighting on //JERV/+/56/22", "20261006-230000 730 //JERV/254/56/22 on"} {
-		topic, payload := m.message(line)
+	for _, line := range []string{"lighting on //JERV/254", "lighting on //JERV/+/56/22", "20261006-230000 730 //JERV/254/56/22 on"} {
+		topic, payload, err := m.message(line)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if topic != m.baseTopic || payload != line {
 			t.Fatalf("changed unrecognized event: %q %q", topic, payload)
 		}
@@ -70,6 +82,32 @@ func TestParseNameReply(t *testing.T) {
 	for _, lines := range [][]string{{"400 Bad object"}, {"300 //JERV/254/56/22: name="}, {"200 OK"}, {"300-//JERV/254/56/22: name=Room", "400 Failed"}} {
 		if _, err := parseNameReply(lines); err == nil {
 			t.Fatalf("accepted %q", lines)
+		}
+	}
+}
+
+func TestParsedEventArguments(t *testing.T) {
+	m := eventMapper{baseTopic: "cbus/events", names: map[string]string{"//JERV/254/56/22": "room"}}
+	for _, tc := range []struct{ line, want string }{
+		{"lighting ramp //JERV/254/56/22 0 4 # source metadata", `{"command":"ramp","value":0,"time":4}`},
+		{"lighting ramp //JERV/254/56/22 128 0.5#comment", `{"command":"ramp","value":128,"time":0.5}`},
+		{"lighting on //JERV/254/56/22 # comment", `{"command":"on"}`},
+		{"lighting ramp //JERV/254/56/22 0", `{"command":"ramp","value":0}`},
+		{"# comment", ""},
+	} {
+		_, got, err := m.message(tc.line)
+		if err != nil || got != tc.want {
+			t.Errorf("%q: got %q, %v; want %q", tc.line, got, err, tc.want)
+		}
+	}
+	for _, line := range []string{
+		"lighting ramp //JERV/254/56/22 bad 4",
+		"lighting ramp //JERV/254/56/22 0 bad",
+		"lighting ramp //JERV/254/56/22 0 4 extra",
+		"lighting ramp //JERV/254/56/22 NaN 4",
+	} {
+		if _, _, err := m.message(line); err == nil {
+			t.Errorf("accepted %q", line)
 		}
 	}
 }

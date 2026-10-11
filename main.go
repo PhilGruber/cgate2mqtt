@@ -28,8 +28,8 @@ type config struct {
 func main() {
 	log.SetOutput(os.Stdout)
 	var cfg config
-	flag.BoolVar(&cfg.verbose, "v", false, "log C-Gate events and commands and MQTT subscriptions, accepted commands, and event publishes to stdout")
-	flag.StringVar(&cfg.eventsAddr, "cgate-events", "localhost:20024", "C-Gate event address (20024 for events, 20025 for status changes)")
+	flag.BoolVar(&cfg.verbose, "v", false, "also log outgoing C-Gate commands and MQTT subscriptions to stdout")
+	flag.StringVar(&cfg.eventsAddr, "cgate-events", "localhost:20025", "C-Gate event address")
 	flag.StringVar(&cfg.commandsAddr, "cgate-commands", "localhost:20023", "C-Gate command address")
 	flag.StringVar(&cfg.broker, "mqtt", "tcp://localhost:1883", "MQTT broker URL")
 	flag.StringVar(&cfg.clientID, "client-id", "cbus2mqtt", "unique MQTT client ID")
@@ -61,6 +61,11 @@ func run(ctx context.Context, cfg config) error {
 	if cfg.eventsTopic == "" || cfg.commandsTopic == "" || strings.ContainsAny(cfg.eventsTopic+cfg.commandsTopic, "+#\x00") || cfg.eventsTopic == cfg.commandsTopic || strings.HasPrefix(cfg.commandsTopic, strings.TrimRight(cfg.eventsTopic, "/")+"/") {
 		return errors.New("event and command topics must be nonempty exact MQTT topics; command topic must be outside the event topic subtree")
 	}
+	devices, err := loadDevices("devices.yaml")
+	if err != nil {
+		return fmt.Errorf("load devices: %w", err)
+	}
+	names := devices.names
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	commands := make(chan commandRequest, 64)
@@ -97,7 +102,7 @@ func run(ctx context.Context, cfg config) error {
 	// Closing both sockets interrupts blocked reads and writes during shutdown.
 	closeOnCancel := context.AfterFunc(ctx, func() { events.Close(); commandConn.Close() })
 	defer closeOnCancel()
-	mapper := eventMapper{baseTopic: cfg.eventsTopic, names: make(map[string]string), lookup: func(address string) (string, error) {
+	mapper := eventMapper{baseTopic: cfg.eventsTopic, names: names, record: devices.record, refresh: devices.reload, lookup: func(address string) (string, error) {
 		replies := make(chan []string, 1)
 		select {
 		case commands <- commandRequest{command: "get " + address + " name", replies: replies}:
@@ -115,13 +120,12 @@ func run(ctx context.Context, cfg config) error {
 	go func() {
 		defer func() { done <- struct{}{} }()
 		workerErr := forwardEvents(ctx, events, func(line string) error {
-			if cfg.verbose {
-				log.Printf("C-Gate event received: %s", line)
+			log.Printf("C-Gate event received: %s", line)
+			topic, payload, err := mapper.message(line)
+			if err != nil {
+				return err
 			}
-			topic, payload := mapper.message(line)
-			if cfg.verbose {
-				log.Printf("MQTT publish: topic=%q payload=%q", topic, payload)
-			}
+			log.Printf("MQTT publish: topic=%q payload=%q", topic, payload)
 			return waitToken(ctx, client.Publish(topic, 1, false, payload))
 		})
 		select {
@@ -136,6 +140,7 @@ func run(ctx context.Context, cfg config) error {
 				log.Printf("MQTT subscribe: topic=%q", cfg.commandsTopic)
 			}
 			return waitToken(ctx, client.Subscribe(cfg.commandsTopic, 1, func(_ mqtt.Client, msg mqtt.Message) {
+				log.Printf("MQTT command received: topic=%q payload=%q", msg.Topic(), string(msg.Payload()))
 				// Retained commands must never actuate devices on startup.
 				if msg.Retained() {
 					log.Print("ignoring retained command")
@@ -145,9 +150,6 @@ func run(ctx context.Context, cfg config) error {
 				if err != nil {
 					log.Printf("ignoring command: %v", err)
 					return
-				}
-				if cfg.verbose {
-					log.Printf("MQTT command received: topic=%q payload=%q", msg.Topic(), string(msg.Payload()))
 				}
 				select {
 				case commands <- commandRequest{command: command}:
@@ -211,6 +213,9 @@ func forwardCommands(ctx context.Context, conn net.Conn, commands <-chan command
 			return "", err
 		}
 		line, err := reader.ReadSlice('\n')
+		if len(line) > 0 {
+			log.Printf("C-Gate reply: %s", strings.TrimRight(string(line), "\r\n"))
+		}
 		return strings.TrimSpace(string(line)), err
 	}
 	greeting, err := readReply()
@@ -246,7 +251,6 @@ func forwardCommands(ctx context.Context, conn net.Conn, commands <-chan command
 				if err != nil {
 					return fmt.Errorf("read C-Gate reply: %w", err)
 				}
-				log.Printf("C-Gate reply: %s", reply)
 				replies = append(replies, reply)
 				if len(reply) < 4 || reply[3] != '-' {
 					break

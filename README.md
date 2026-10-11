@@ -7,9 +7,9 @@ A Go service with two main forwarding goroutines:
 
 The MQTT library runs its own network goroutines. The command worker subscribes after receiving C-Gate's ready greeting.
 
-Logs are written to stdout, including successful MQTT and C-Gate connections, command readiness, and connection failures.
+Logs are written to stdout, including every incoming C-Gate event and command reply (including the greeting), every incoming MQTT command, and every outgoing MQTT publish with its topic and payload, as well as successful connections, command readiness, and connection failures.
 
-Add `-v` to also log every incoming C-Gate event, outgoing C-Gate command, MQTT subscription, accepted incoming MQTT command, and outgoing MQTT event publish. MQTT logs include topics and payloads; retained or invalid commands remain ignored. Outgoing traffic is logged when attempted, not as confirmation of delivery.
+Add `-v` to also log outgoing C-Gate commands and MQTT subscriptions. Retained or invalid commands are logged and remain ignored. Outgoing traffic is logged when attempted, not as confirmation of delivery.
 
 Run with an existing MQTT broker and C-Gate server:
 
@@ -19,13 +19,24 @@ go run . -v -cgate-events localhost:20024 -cgate-commands localhost:20023 -mqtt 
 
 Use `-events-topic`, `-commands-topic`, and `-client-id` to override defaults. Topics must be exact names without wildcards, and the command topic must be outside the event topic subtree. Set `MQTT_USERNAME` and `MQTT_PASSWORD` for broker authentication. C-Gate must permit this host through its access configuration and have the desired project/networks open.
 
-The default read connection uses C-Gate's event port, **20024**. Port **20025** is a different stream: status changes rendered as commands and comments. Use `-cgate-events localhost:20025` if you specifically want that format. Neither stream echoes every command submitted by other clients; event output also depends on C-Gate's configured event levels. See the [C-Gate server guide](https://manualzz.com/doc/23261582/c-gate-server-guide). With `-v`, each received line is logged as `C-Gate event received` before publishing it to MQTT.
+The default read connection uses C-Gate's event port, **20024**. Port **20025** is a different stream: status changes rendered as commands and comments. Use `-cgate-events localhost:20025` if you specifically want that format. Neither stream echoes every command submitted by other clients; event output also depends on C-Gate's configured event levels. See the [C-Gate server guide](https://manualzz.com/doc/23261582/c-gate-server-guide). Each received line is logged as `C-Gate event received` before publishing it to MQTT.
 
 For example, publish `on 1/56/1` to `cbus/commands` to send that command to C-Gate. Payloads contain a single command, up to 4096 bytes; retained commands are ignored. QoS 1 can deliver duplicates, so prefer idempotent commands.
 
-For lighting status changes such as `lighting on //JERV/254/56/22`, the bridge publishes `{"lighting":"on"}` to `cbus/events/JERV/living-room` when the group's name is `Living Room`. Names are lowercased and spaces become dashes; project spelling is preserved. On the first event for an address, the bridge sends `get //JERV/254/56/22 name` through the command connection (the project-qualified form of `get 254/56/22 name`). Successful names are cached in memory until restart. Lookups and MQTT commands are serialized on that connection.
+For lighting status changes such as `lighting on //JERV/254/56/22`, the bridge publishes `{"command":"on"}` to `cbus/events/JERV/living-room` when the group's name is `Living Room`. Names are lowercased and spaces become dashes; project spelling is preserved. On the first event for an address, the bridge sends `get //JERV/254/56/22 name` through the command connection (the project-qualified form of `get 254/56/22 name`). Discovered devices are saved to `devices.yaml` in the working directory and loaded on startup. Saved nonempty names take precedence over C-Gate lookups. Lookups and MQTT commands are serialized on that connection.
 
-If a name lookup fails, returns an empty name, or contains MQTT topic separators/wildcards, the JSON is published to `cbus/events/JERV/254/56/22` instead; later events retry the lookup. Names should be unique within a project because groups with the same normalized name share a topic. Any extra lighting arguments are kept in the JSON value, e.g. `lighting ramp //JERV/254/56/22 128 4` becomes `{"lighting":"ramp 128 4"}`. Use `-cgate-events localhost:20025` for this status-change format; timestamped diagnostic events from port 20024 remain raw on the base topic. Subscribe to `cbus/events/#` to receive all event topics. `-events-topic` changes the base prefix.
+The file is a YAML array with exactly two fields per device:
+
+```yaml
+- address: //JERV/254/56/22
+  friendly_name: living-room
+- address: //JERV/254/56/23
+  friendly_name: ""
+```
+
+Edit `friendly_name` while the bridge is running; the device list and all friendly names are reloaded before processing lighting events and before saving new devices. Custom names use the same topic normalization described above. New lighting devices are added automatically, with an empty name when none is available; successful later lookups fill empty entries. Existing nonempty names are preserved. A missing file is created automatically. Invalid files or failed writes stop the bridge with an error.
+
+If a name lookup fails, returns an empty name, or contains MQTT topic separators/wildcards, the JSON is published to `cbus/events/JERV/254/56/22` instead; later events retry the lookup. Names should be unique within a project because groups with the same normalized name share a topic. Lighting events are split into `command`, optional numeric `value`, and optional numeric `time` in seconds. For example, `lighting ramp //JERV/254/56/22 0 4` becomes `{"command":"ramp","value":0,"time":4}`. Everything from the first `#` onward is discarded before parsing. Use `-cgate-events localhost:20025` for this status-change format; timestamped diagnostic events from port 20024 remain raw on the base topic. Subscribe to `cbus/events/#` to receive all event topics. `-events-topic` changes the base prefix.
 
 The bridge does not generate Home Assistant discovery. It buffers up to 64 commands in memory. Connection errors, MQTT timeouts, or queue overflow stop the service with an error; use a process supervisor to restart it. Commands are not durably queued or retried. Ctrl-C and SIGTERM cancel both workers and close their sockets. Idle command-socket failures are detected when the next command is sent.
 
