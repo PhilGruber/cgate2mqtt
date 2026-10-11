@@ -76,7 +76,7 @@ func (m *eventMapper) message(line string) (string, string, error) {
 		resolved, err := m.lookup(address)
 		if err == nil {
 			name = normalizeName(resolved)
-			if name == "" || strings.ContainsAny(name, "/+#\x00\r\n") {
+			if name == "" {
 				err = fmt.Errorf("name is empty or unsuitable for an MQTT topic")
 				name = ""
 			} else {
@@ -121,7 +121,7 @@ func parseNameReply(lines []string) (string, error) {
 
 func normalizeName(name string) string {
 	name = strings.ReplaceAll(strings.ToLower(strings.TrimSpace(name)), " ", "-")
-	if strings.ContainsAny(name, "/+#\x00\r\n") {
+	if strings.ContainsAny(name, "+#\x00\r\n") {
 		return ""
 	}
 	return name

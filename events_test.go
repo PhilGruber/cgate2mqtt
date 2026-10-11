@@ -111,3 +111,29 @@ func TestParsedEventArguments(t *testing.T) {
 		}
 	}
 }
+
+func TestFriendlyNameTopicPath(t *testing.T) {
+	m := eventMapper{
+		baseTopic: "cbus/events",
+		names:     map[string]string{"//JERV/254/56/35": "bedroom/tv"},
+		lookup: func(string) (string, error) {
+			t.Fatal("looked up address with saved friendly name")
+			return "", nil
+		},
+	}
+	topic, payload, err := m.message("lighting on //JERV/254/56/35")
+	if err != nil || topic != "cbus/events/JERV/bedroom/tv" || payload != `{"command":"on"}` {
+		t.Fatalf("got %q %q, %v", topic, payload, err)
+	}
+}
+
+func TestNormalizeNameTopicPaths(t *testing.T) {
+	if got := normalizeName(" Bedroom/TV "); got != "bedroom/tv" {
+		t.Fatalf("got %q", got)
+	}
+	for _, name := range []string{"bedroom/+", "bedroom/#", "bedroom\x00tv", "bedroom\ntv", "bedroom\rtv"} {
+		if got := normalizeName(name); got != "" {
+			t.Errorf("accepted invalid name %q as %q", name, got)
+		}
+	}
+}
