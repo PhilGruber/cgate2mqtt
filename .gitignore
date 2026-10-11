@@ -25,9 +25,9 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
 .env
+.version
+bump-version-and-push-to-repo.zsh
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
