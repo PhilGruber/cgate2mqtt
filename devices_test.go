@@ -68,6 +68,55 @@ func TestInvalidDevicesFile(t *testing.T) {
 	}
 }
 
+func TestAllEventDevicesPersist(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "devices.yaml")
+	store, err := loadDevices(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapper := eventMapper{baseTopic: "cbus", names: store.names, record: store.record, refresh: store.reload}
+	for _, line := range []string{
+		"clock date //HOME/1/223 2026-10-11 6",
+		"clock time //HOME/1/223 17:06:39 1",
+		"measurement value //HOME/1/228/2 21",
+		"virtual update //HOME/virtual/sensor/temperature/inside 22",
+		"network ready //HOME/1",
+		"project ready //HOME",
+		"20261011-170639 730 //HOME/1/p/7: changed",
+		"unknown update //HOME/virtual/sensor/temperature/inside 23",
+	} {
+		if _, _, err := mapper.message(line); err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+	}
+	loaded, err := loadDevices(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"//HOME/1/223", "//HOME/1/228/2", "//HOME/virtual/sensor/temperature/inside", "//HOME/1", "//HOME", "//HOME/1/p/7"}
+	if len(loaded.devices) != len(want) {
+		t.Fatalf("unexpected devices: %+v", loaded.devices)
+	}
+	for i, address := range want {
+		if loaded.devices[i].Address != address || loaded.devices[i].FriendlyName != "" {
+			t.Fatalf("device %d: %+v", i, loaded.devices[i])
+		}
+	}
+	if err := loaded.record(want[0], "House Clock"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := mapper.message("clock time //HOME/1/223 18:00:00"); err != nil {
+		t.Fatal(err)
+	}
+	if store.names[want[0]] != "House Clock" {
+		t.Fatal("overwrote custom clock name")
+	}
+	mapper.record = func(string, string) error { return errors.New("write failed") }
+	if _, _, err := mapper.message("virtual update //HOME/virtual/device 1"); err == nil {
+		t.Fatal("ignored persistence failure for non-lighting event")
+	}
+}
+
 func TestDeviceWriteFailure(t *testing.T) {
 	store := &deviceStore{path: filepath.Join(t.TempDir(), "missing", "devices.yaml")}
 	m := eventMapper{baseTopic: "events", names: map[string]string{}, record: store.record, lookup: func(string) (string, error) { return "Kitchen", nil }}

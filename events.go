@@ -28,6 +28,28 @@ func (m *eventMapper) message(line string) (string, string, error) {
 	line, _, _ = strings.Cut(line, "#")
 	line = strings.TrimSpace(line)
 	fields := strings.Fields(line)
+	// Discovery is independent of event type and MQTT formatting. Application,
+	// network, virtual and diagnostic addresses need not have four components.
+	if m.record != nil {
+		for _, field := range fields {
+			address := strings.TrimSuffix(field, ":")
+			if !strings.HasPrefix(address, "//") {
+				continue
+			}
+			valid := true
+			for _, part := range strings.Split(strings.TrimPrefix(address, "//"), "/") {
+				if part == "" || strings.ContainsAny(part, "+#\x00") {
+					valid = false
+					break
+				}
+			}
+			if valid {
+				if err := m.record(address, ""); err != nil {
+					return "", "", fmt.Errorf("save devices: %w", err)
+				}
+			}
+		}
+	}
 	if len(fields) >= 3 && fields[0] == "clock" && (fields[1] == "date" || fields[1] == "time") && strings.HasPrefix(fields[2], "//") {
 		return m.clockMessage(line, fields)
 	}
