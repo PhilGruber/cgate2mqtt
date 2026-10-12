@@ -192,7 +192,7 @@ func TestDeviceFriendlyNameMQTTTopics(t *testing.T) {
 			}}
 			for _, state := range []string{"on", "off"} {
 				topic, payload, err := mapper.message("lighting " + state + " //HOME/1/56/1")
-				if err != nil || topic != tc.wantTopic || payload != `{"command":"`+state+`"}` {
+				if err != nil || topic != tc.wantTopic || payload != `{"type":"lighting","command":"`+state+`"}` {
 					t.Fatalf("got %q %q, %v; want topic %q", topic, payload, err, tc.wantTopic)
 				}
 			}

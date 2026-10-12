@@ -28,7 +28,7 @@ func (m *eventMapper) message(line string) (string, string, error) {
 	line, _, _ = strings.Cut(line, "#")
 	line = strings.TrimSpace(line)
 	fields := strings.Fields(line)
-	// Discovery is independent of event type and MQTT formatting. Application,
+	// Discovery is independent of the event type and MQTT formatting. Application,
 	// network, virtual and diagnostic addresses need not have four components.
 	if m.record != nil {
 		for _, field := range fields {
@@ -37,7 +37,7 @@ func (m *eventMapper) message(line string) (string, string, error) {
 				continue
 			}
 			valid := true
-			for _, part := range strings.Split(strings.TrimPrefix(address, "//"), "/") {
+			for part := range strings.SplitSeq(strings.TrimPrefix(address, "//"), "/") {
 				if part == "" || strings.ContainsAny(part, "+#\x00") {
 					valid = false
 					break
@@ -69,10 +69,11 @@ func (m *eventMapper) message(line string) (string, string, error) {
 		}
 	}
 	status := struct {
+		Type    string   `json:"type"`
 		Command string   `json:"command"`
 		Value   *float64 `json:"value,omitempty"`
 		Time    *float64 `json:"time,omitempty"` // Seconds.
-	}{Command: fields[1]}
+	}{Type: fields[0], Command: fields[1]}
 	if len(fields) > 5 {
 		return "", "", fmt.Errorf("too many lighting event arguments: %s", line)
 	}
@@ -148,18 +149,19 @@ func (m *eventMapper) clockMessage(line string, fields []string) (string, string
 		return "", "", fmt.Errorf("invalid clock %s value %q", fields[1], fields[3])
 	}
 	status := struct {
+		Type           string `json:"type"`
 		Command        string `json:"command"`
 		Value          string `json:"value"`
 		DayOfWeek      *int   `json:"day_of_week,omitempty"`
 		DaylightSaving *int   `json:"daylight_saving,omitempty"`
-	}{Command: fields[1], Value: fields[3]}
+	}{Type: fields[0], Command: fields[1], Value: fields[3]}
 	if len(fields) == 5 {
 		flag, err := strconv.Atoi(fields[4])
-		max := 6
+		maxWd := 6
 		if fields[1] == "time" {
-			max = 1
+			maxWd = 1
 		}
-		if err != nil || flag < 0 || flag > max {
+		if err != nil || flag < 0 || flag > maxWd {
 			return "", "", fmt.Errorf("invalid clock %s flag %q", fields[1], fields[4])
 		}
 		if fields[1] == "date" {

@@ -19,7 +19,7 @@ func TestNamedEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if topic != "cbus/living-room" || payload != `{"command":"`+state+`"}` {
+		if topic != "cbus/living-room" || payload != `{"type":"lighting","command":"`+state+`"}` {
 			t.Fatalf("got %q %q", topic, payload)
 		}
 	}
@@ -41,7 +41,7 @@ func TestNameLookupFallbackAndRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if topic != "custom/events/JERV/254/56/22" || payload != `{"command":"on"}` {
+	if topic != "custom/events/JERV/254/56/22" || payload != `{"type":"lighting","command":"on"}` {
 		t.Fatalf("fallback: %q %q", topic, payload)
 	}
 	topic, _, err = m.message("lighting off //JERV/254/56/22")
@@ -89,10 +89,10 @@ func TestParseNameReply(t *testing.T) {
 func TestParsedEventArguments(t *testing.T) {
 	m := eventMapper{baseTopic: "cbus", names: map[string]string{"//JERV/254/56/22": "room"}}
 	for _, tc := range []struct{ line, want string }{
-		{"lighting ramp //JERV/254/56/22 0 4 # source metadata", `{"command":"ramp","value":0,"time":4}`},
-		{"lighting ramp //JERV/254/56/22 128 0.5#comment", `{"command":"ramp","value":128,"time":0.5}`},
-		{"lighting on //JERV/254/56/22 # comment", `{"command":"on"}`},
-		{"lighting ramp //JERV/254/56/22 0", `{"command":"ramp","value":0}`},
+		{"lighting ramp //JERV/254/56/22 0 4 # source metadata", `{"type":"lighting","command":"ramp","value":0,"time":4}`},
+		{"lighting ramp //JERV/254/56/22 128 0.5#comment", `{"type":"lighting","command":"ramp","value":128,"time":0.5}`},
+		{"lighting on //JERV/254/56/22 # comment", `{"type":"lighting","command":"on"}`},
+		{"lighting ramp //JERV/254/56/22 0", `{"type":"lighting","command":"ramp","value":0}`},
 		{"# comment", ""},
 	} {
 		_, got, err := m.message(tc.line)
@@ -122,7 +122,7 @@ func TestFriendlyNameTopicPath(t *testing.T) {
 		},
 	}
 	topic, payload, err := m.message("lighting on //JERV/254/56/35")
-	if err != nil || topic != "cbus/bedroom/tv" || payload != `{"command":"on"}` {
+	if err != nil || topic != "cbus/bedroom/tv" || payload != `{"type":"lighting","command":"on"}` {
 		t.Fatalf("got %q %q, %v", topic, payload, err)
 	}
 }
@@ -144,11 +144,11 @@ func TestClockEvents(t *testing.T) {
 		return "", nil
 	}}
 	for _, tc := range []struct{ line, want string }{
-		{"clock date //JERV/254/223 2026-10-11 6", `{"command":"date","value":"2026-10-11","day_of_week":6}`},
-		{"clock time //JERV/254/223 17:06:39 1", `{"command":"time","value":"17:06:39","daylight_saving":1}`},
-		{"clock date //JERV/254/223 2026-10-12 0 # comment", `{"command":"date","value":"2026-10-12","day_of_week":0}`},
-		{"clock time //JERV/254/223 00:00:00 0", `{"command":"time","value":"00:00:00","daylight_saving":0}`},
-		{"clock time //JERV/254/223 17:06:39", `{"command":"time","value":"17:06:39"}`},
+		{"clock date //JERV/254/223 2026-10-11 6", `{"type":"clock","command":"date","value":"2026-10-11","day_of_week":6}`},
+		{"clock time //JERV/254/223 17:06:39 1", `{"type":"clock","command":"time","value":"17:06:39","daylight_saving":1}`},
+		{"clock date //JERV/254/223 2026-10-12 0 # comment", `{"type":"clock","command":"date","value":"2026-10-12","day_of_week":0}`},
+		{"clock time //JERV/254/223 00:00:00 0", `{"type":"clock","command":"time","value":"00:00:00","daylight_saving":0}`},
+		{"clock time //JERV/254/223 17:06:39", `{"type":"clock","command":"time","value":"17:06:39"}`},
 	} {
 		topic, payload, err := m.message(tc.line)
 		if err != nil || topic != "cbus/JERV/254/223" || payload != tc.want {
