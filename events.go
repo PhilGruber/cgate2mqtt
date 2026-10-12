@@ -11,8 +11,9 @@ import (
 
 // Only the command worker reads replies from the command socket.
 type commandRequest struct {
-	command string
-	replies chan []string
+	command  string
+	replies  chan []string
+	complete func([]string) error
 }
 
 // Used by the event worker only.
@@ -25,6 +26,25 @@ type eventMapper struct {
 }
 
 func (m *eventMapper) message(line string) (string, string, error) {
+	line, metadata := normalizeEvent(line)
+	topic, payload, err := m.messageBody(line)
+	if err == nil && len(metadata) != 0 && strings.HasPrefix(payload, "{") {
+		var fields map[string]any
+		if json.Unmarshal([]byte(payload), &fields) == nil {
+			for key, value := range metadata {
+				fields[key] = value
+			}
+			encoded, encodeErr := json.Marshal(fields)
+			if encodeErr != nil {
+				return "", "", encodeErr
+			}
+			payload = string(encoded)
+		}
+	}
+	return topic, payload, err
+}
+
+func (m *eventMapper) messageBody(line string) (string, string, error) {
 	line, _, _ = strings.Cut(line, "#")
 	line = strings.TrimSpace(line)
 	fields := strings.Fields(line)
@@ -52,6 +72,9 @@ func (m *eventMapper) message(line string) (string, string, error) {
 	}
 	if len(fields) >= 3 && fields[0] == "clock" && (fields[1] == "date" || fields[1] == "time") && strings.HasPrefix(fields[2], "//") {
 		return m.clockMessage(line, fields)
+	}
+	if len(fields) >= 3 && (fields[0] == "measurement" || fields[0] == "temperature" || fields[0] == "security") {
+		return m.deviceStatus(line, fields)
 	}
 	// Status-change events have the form: lighting on //PROJECT/net/app/group.
 	// Preserve other event formats on the base topic.
@@ -98,7 +121,7 @@ func (m *eventMapper) message(line string) (string, string, error) {
 		}
 	}
 	name := normalizeName(m.names[address])
-	if name == "" {
+	if name == "" && m.lookup != nil {
 		// Keep the project qualifier so lookups cannot resolve in another project.
 		resolved, err := m.lookup(address)
 		if err == nil {

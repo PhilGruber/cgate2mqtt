@@ -24,6 +24,9 @@ func parseConfig(args []string, path string, output io.Writer) (config, error) {
 	flags.StringVar(&cfg.commandsTopic, "commands-topic", "cbus", "MQTT command base topic (commands end in /set; no wildcards)")
 	flags.StringVar(&cfg.mqttUsername, "mqtt-username", os.Getenv("MQTT_USERNAME"), "MQTT username (defaults to MQTT_USERNAME)")
 	flags.StringVar(&cfg.mqttPassword, "mqtt-password", os.Getenv("MQTT_PASSWORD"), "MQTT password (defaults to MQTT_PASSWORD)")
+	flags.BoolVar(&cfg.retainState, "retain-state", true, "retain device state on MQTT")
+	flags.BoolVar(&cfg.startupState, "startup-state", true, "query known devices and networks on startup")
+	flags.StringVar(&cfg.startupNetworks, "startup-networks", "", "additional comma-separated //PROJECT/network addresses to query on startup")
 	file, err := os.Open(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return cfg, fmt.Errorf("read config %s: %w", path, err)

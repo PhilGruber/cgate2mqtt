@@ -1,7 +1,7 @@
 VERSION := $(if $(VERSION),$(VERSION),"0.0.0-dev")
 
-binary: commands.go config.go devices.go events.go main.go
-	go build -ldflags "-X main.AppVersion=$(VERSION)" -o cbus2mqtt commands.go config.go devices.go events.go main.go
+binary: commands.go config.go devices.go events.go main.go replies.go status.go
+	go build -ldflags "-X main.AppVersion=$(VERSION)" -o cbus2mqtt commands.go config.go devices.go events.go main.go replies.go status.go
 
 clean:
 	rm cbus2mqtt

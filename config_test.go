@@ -20,7 +20,7 @@ func TestConfigFileAndOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config{eventsAddr: "host:20024", commandsAddr: "host:20023", broker: "tcp://override:1883", clientID: "test", eventsTopic: "events", commandsTopic: "commands", mqttUsername: "file-user", mqttPassword: "secret=with#symbols"}
+	want := config{eventsAddr: "host:20024", commandsAddr: "host:20023", broker: "tcp://override:1883", clientID: "test", eventsTopic: "events", commandsTopic: "commands", mqttUsername: "file-user", mqttPassword: "secret=with#symbols", retainState: true, startupState: true}
 	if cfg != want {
 		t.Fatal("config settings or command-line overrides did not match")
 	}

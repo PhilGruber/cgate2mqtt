@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -24,6 +25,8 @@ type config struct {
 	eventsAddr, commandsAddr, broker, clientID, eventsTopic, commandsTopic string
 	verbose                                                                bool
 	mqttUsername, mqttPassword                                             string
+	startupNetworks                                                        string
+	startupState, retainState                                              bool
 }
 
 func main() {
@@ -67,6 +70,10 @@ func run(ctx context.Context, cfg config) error {
 	if err != nil {
 		return fmt.Errorf("load devices: %w", err)
 	}
+	initial, err := startupCommands(devices.devices, cfg.startupNetworks)
+	if err != nil {
+		return err
+	}
 	names := devices.names
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -75,6 +82,11 @@ func run(ctx context.Context, cfg config) error {
 	opts := mqtt.NewClientOptions().AddBroker(cfg.broker).SetClientID(cfg.clientID).
 		SetAutoReconnect(false).SetConnectTimeout(operationTimeout).SetWriteTimeout(operationTimeout)
 	opts.SetUsername(cfg.mqttUsername).SetPassword(cfg.mqttPassword)
+	if cfg.clientID == "" || strings.ContainsAny(cfg.clientID, "+#\x00") {
+		return errors.New("client-id must be nonempty and contain no MQTT wildcards")
+	}
+	availabilityTopic := cfg.eventsTopic + "/bridge/" + cfg.clientID + "/availability"
+	opts.SetWill(availabilityTopic, "offline", 1, true)
 	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
 		select {
 		case failures <- fmt.Errorf("MQTT disconnected: %w", err):
@@ -86,7 +98,26 @@ func run(ctx context.Context, cfg config) error {
 		client.Disconnect(0)
 		return fmt.Errorf("connect MQTT: %w", err)
 	}
-	defer client.Disconnect(0)
+	defer func() {
+		shutdown, stop := context.WithTimeout(context.Background(), operationTimeout)
+		defer stop()
+		if client.IsConnected() {
+			if err := waitToken(shutdown, client.Publish(availabilityTopic, 1, true, "offline")); err != nil {
+				log.Printf("publish offline availability: %v", err)
+			}
+		}
+		client.Disconnect(250)
+	}()
+	publish := func(topic, payload string, retained bool) error {
+		log.Printf("MQTT publish: topic=%q payload=%q", topic, payload)
+		return waitToken(ctx, client.Publish(topic, 1, retained, payload))
+	}
+	statePublish := func(topic, payload string, retained bool) error {
+		return publish(topic, payload, retained && cfg.retainState)
+	}
+	if err := publish(availabilityTopic, "offline", true); err != nil {
+		return err
+	}
 	log.Print("connected to MQTT broker")
 	dialer := net.Dialer{Timeout: operationTimeout}
 	events, err := dialer.DialContext(ctx, "tcp", cfg.eventsAddr)
@@ -127,8 +158,11 @@ func run(ctx context.Context, cfg config) error {
 			if err != nil {
 				return err
 			}
-			log.Printf("MQTT publish: topic=%q payload=%q", topic, payload)
-			return waitToken(ctx, client.Publish(topic, 1, false, payload))
+			if payload == "" {
+				return nil
+			}
+			topic, retained := statePublication(topic, payload)
+			return statePublish(topic, payload, retained)
 		})
 		select {
 		case failures <- workerErr:
@@ -141,7 +175,7 @@ func run(ctx context.Context, cfg config) error {
 			if cfg.verbose {
 				log.Printf("MQTT subscribe: topic=%q", cfg.commandsTopic+"/#")
 			}
-			return waitToken(ctx, client.Subscribe(cfg.commandsTopic+"/#", 1, func(_ mqtt.Client, msg mqtt.Message) {
+			err := waitToken(ctx, client.Subscribe(cfg.commandsTopic+"/#", 1, func(_ mqtt.Client, msg mqtt.Message) {
 				// MQTT filters cannot match a suffix after a variable-depth device path.
 				if !strings.HasSuffix(msg.Topic(), "/set") {
 					return
@@ -152,13 +186,16 @@ func run(ctx context.Context, cfg config) error {
 					log.Print("ignoring retained command")
 					return
 				}
-				command, err := mqttCommand(cfg.commandsTopic, msg.Topic(), msg.Payload(), "devices.yaml")
+				command, err := planCommand(cfg.commandsTopic, msg.Topic(), msg.Payload(), "devices.yaml")
+				resultTopic := strings.TrimSuffix(msg.Topic(), "/set") + "/result"
+				request := commandRequest{command: command.wire, complete: commandCompletion(command, resultTopic, cfg.eventsTopic, "devices.yaml", statePublish)}
 				if err != nil {
 					log.Printf("ignoring command: %v", err)
-					return
+					payload, _ := json.Marshal(commandResult{OK: false, Error: err.Error()})
+					request = commandRequest{complete: func([]string) error { return publish(resultTopic, string(payload), false) }}
 				}
 				select {
-				case commands <- commandRequest{command: command}:
+				case commands <- request:
 				case <-ctx.Done():
 				default:
 					select {
@@ -167,6 +204,27 @@ func run(ctx context.Context, cfg config) error {
 					}
 				}
 			}))
+			if err != nil {
+				return err
+			}
+			// Enqueue snapshots without blocking the socket worker on a full queue.
+			go func() {
+				if cfg.startupState {
+					for _, command := range initial {
+						request := commandRequest{command: command.wire, complete: commandCompletion(command, cfg.eventsTopic+"/startup/result", cfg.eventsTopic, "devices.yaml", statePublish)}
+						select {
+						case commands <- request:
+						case <-ctx.Done():
+							return
+						}
+					}
+				}
+				select {
+				case commands <- commandRequest{complete: func([]string) error { return publish(availabilityTopic, "online", true) }}:
+				case <-ctx.Done():
+				}
+			}()
+			return nil
 		})
 		select {
 		case failures <- workerErr:
@@ -215,14 +273,14 @@ func validateCommand(payload string) (string, error) {
 func forwardCommands(ctx context.Context, conn net.Conn, commands <-chan commandRequest, verbose bool, subscribe func() error) error {
 	reader := bufio.NewReaderSize(conn, 8192)
 	readReply := func() (string, error) {
-		if err := conn.SetReadDeadline(time.Now().Add(operationTimeout)); err != nil {
-			return "", err
-		}
 		line, err := reader.ReadSlice('\n')
 		if len(line) > 0 {
 			log.Printf("C-Gate reply: %s", strings.TrimRight(string(line), "\r\n"))
 		}
 		return strings.TrimSpace(string(line)), err
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(operationTimeout)); err != nil {
+		return err
 	}
 	greeting, err := readReply()
 	if err != nil {
@@ -235,32 +293,64 @@ func forwardCommands(ctx context.Context, conn net.Conn, commands <-chan command
 		return fmt.Errorf("subscribe MQTT: %w", err)
 	}
 	log.Print("C-Gate ready and MQTT command subscription successful; ready to forward commands")
+	execute := func(command string) ([]string, error) {
+		if err := conn.SetDeadline(time.Now().Add(operationTimeout)); err != nil {
+			return nil, err
+		}
+		if verbose {
+			log.Printf("C-Gate command: %s", command)
+		}
+		if _, err := io.WriteString(conn, command+"\r\n"); err != nil {
+			return nil, fmt.Errorf("write C-Gate command: %w", err)
+		}
+		var replies []string
+		for {
+			reply, err := readReply()
+			if err != nil {
+				return replies, fmt.Errorf("read C-Gate reply: %w", err)
+			}
+			replies = append(replies, reply)
+			if len(replies) > 4096 {
+				return replies, errors.New("C-Gate reply exceeds 4096 lines")
+			}
+			if _, err := replyCode(reply); err != nil {
+				return replies, err
+			}
+			if reply[3] != '-' {
+				return replies, nil
+			}
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case request := <-commands:
-			command := request.command
-			if err := conn.SetWriteDeadline(time.Now().Add(operationTimeout)); err != nil {
-				return err
+		case request, ok := <-commands:
+			if !ok {
+				return nil
 			}
-			if verbose {
-				log.Printf("C-Gate command: %s", command)
+			if request.command == "" && request.complete != nil {
+				if err := request.complete(nil); err != nil {
+					return err
+				}
+				continue
 			}
-			if _, err := io.WriteString(conn, command+"\r\n"); err != nil {
-				return fmt.Errorf("write C-Gate command: %w", err)
+			replies, err := execute(request.command)
+			// Some builds spell this TERMINATERAMP. Retry only a syntax rejection.
+			if err == nil && strings.HasPrefix(request.command, "terminate_ramp ") && len(replies) == 1 && strings.HasPrefix(replies[0], "400 ") {
+				replies, err = execute(strings.Replace(request.command, "terminate_ramp", "terminateramp", 1))
 			}
-			// Consume all continuation lines before accepting the next command.
-			var replies []string
-			for {
-				reply, err := readReply()
+			if request.complete != nil {
+				reported := replies
 				if err != nil {
-					return fmt.Errorf("read C-Gate reply: %w", err)
+					reported = append(append([]string(nil), replies...), "000 "+err.Error())
 				}
-				replies = append(replies, reply)
-				if len(reply) < 4 || reply[3] != '-' {
-					break
+				if completeErr := request.complete(reported); completeErr != nil && err == nil {
+					return completeErr
 				}
+			}
+			if err != nil {
+				return err
 			}
 			if request.replies != nil {
 				select {
