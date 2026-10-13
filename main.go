@@ -20,6 +20,7 @@ import (
 )
 
 const operationTimeout = 10 * time.Second
+const defaultDevicesPath = "/etc/cbus2mqtt/devices.yaml"
 
 type config struct {
 	eventsAddr, commandsAddr, broker, clientID, eventsTopic, commandsTopic string
@@ -61,12 +62,16 @@ func waitToken(ctx context.Context, token mqtt.Token) error {
 }
 
 func run(ctx context.Context, cfg config) error {
+	return runWithDevices(ctx, cfg, defaultDevicesPath)
+}
+
+func runWithDevices(ctx context.Context, cfg config, devicesPath string) error {
 	cfg.eventsTopic = strings.TrimRight(cfg.eventsTopic, "/")
 	cfg.commandsTopic = strings.TrimRight(cfg.commandsTopic, "/")
 	if cfg.eventsTopic == "" || cfg.commandsTopic == "" || strings.ContainsAny(cfg.eventsTopic+cfg.commandsTopic, "+#\x00") {
 		return errors.New("event and command topic prefixes must be nonempty MQTT topics without wildcards")
 	}
-	devices, err := loadDevices("devices.yaml")
+	devices, err := loadDevices(devicesPath)
 	if err != nil {
 		return fmt.Errorf("load devices: %w", err)
 	}
@@ -186,9 +191,9 @@ func run(ctx context.Context, cfg config) error {
 					log.Print("ignoring retained command")
 					return
 				}
-				command, err := planCommand(cfg.commandsTopic, msg.Topic(), msg.Payload(), "devices.yaml")
+				command, err := planCommand(cfg.commandsTopic, msg.Topic(), msg.Payload(), devicesPath)
 				resultTopic := strings.TrimSuffix(msg.Topic(), "/set") + "/result"
-				request := commandRequest{command: command.wire, complete: commandCompletion(command, resultTopic, cfg.eventsTopic, "devices.yaml", statePublish)}
+				request := commandRequest{command: command.wire, complete: commandCompletion(command, resultTopic, cfg.eventsTopic, devicesPath, statePublish)}
 				if err != nil {
 					log.Printf("ignoring command: %v", err)
 					payload, _ := json.Marshal(commandResult{OK: false, Error: err.Error()})
@@ -211,7 +216,7 @@ func run(ctx context.Context, cfg config) error {
 			go func() {
 				if cfg.startupState {
 					for _, command := range initial {
-						request := commandRequest{command: command.wire, complete: commandCompletion(command, cfg.eventsTopic+"/startup/result", cfg.eventsTopic, "devices.yaml", statePublish)}
+						request := commandRequest{command: command.wire, complete: commandCompletion(command, cfg.eventsTopic+"/startup/result", cfg.eventsTopic, devicesPath, statePublish)}
 						select {
 						case commands <- request:
 						case <-ctx.Done():

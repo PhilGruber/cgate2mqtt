@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -25,8 +26,8 @@ func testListener(t *testing.T) net.Listener {
 }
 
 func TestBridgeStatusControlIntegration(t *testing.T) {
-	t.Chdir(t.TempDir())
-	if err := os.WriteFile("devices.yaml", []byte("- address: //JERV/254/56/29\n  friendly_name: room\n- address: //JERV/254/228/1/2\n  friendly_name: sensor\n- address: //JERV/254/208\n  friendly_name: alarm\n"), 0600); err != nil {
+	devicesPath := filepath.Join(t.TempDir(), "devices.yaml")
+	if err := os.WriteFile(devicesPath, []byte("- address: //JERV/254/56/29\n  friendly_name: room\n- address: //JERV/254/228/1/2\n  friendly_name: sensor\n- address: //JERV/254/208\n  friendly_name: alarm\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	broker, events, cgate := testListener(t), testListener(t), testListener(t)
@@ -130,7 +131,7 @@ func TestBridgeStatusControlIntegration(t *testing.T) {
 	cfg := config{eventsAddr: events.Addr().String(), commandsAddr: cgate.Addr().String(), broker: "tcp://" + broker.Addr().String(), clientID: "test", eventsTopic: "cbus", commandsTopic: "cbus", startupState: true, retainState: true}
 	done := make(chan error, 1)
 	stopped := make(chan struct{})
-	go func() { defer close(stopped); done <- run(ctx, cfg) }()
+	go func() { defer close(stopped); done <- runWithDevices(ctx, cfg, devicesPath) }()
 	t.Cleanup(func() {
 		cancel()
 		select {
