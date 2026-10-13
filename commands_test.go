@@ -16,15 +16,15 @@ import (
 
 func TestMQTTJSONCommands(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "devices.yaml")
-	data := "- address: //JERV/254/56/35\n  friendly_name: bedroom/tv\n- address: //OTHER/254/56/35\n  friendly_name: other-bedroom/tv\n"
+	data := "- address: //MYHOME/254/56/35\n  friendly_name: bedroom/tv\n- address: //OTHER/254/56/35\n  friendly_name: other-bedroom/tv\n"
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ topic, payload, want string }{
-		{"cbus/bedroom/tv/set", `{"command":"ramp","value":255,"time":4}`, "ramp //JERV/254/56/35 255 4"},
-		{"cbus/bedroom/tv/set", `{"command":"on"}`, "on //JERV/254/56/35"},
+		{"cbus/bedroom/tv/set", `{"command":"ramp","value":255,"time":4}`, "ramp //MYHOME/254/56/35 255 4"},
+		{"cbus/bedroom/tv/set", `{"command":"on"}`, "on //MYHOME/254/56/35"},
 		{"cbus/other-bedroom/tv/set", `{"command":"off"}`, "off //OTHER/254/56/35"},
-		{"cbus/JERV/254/56/35/set", `{"command":"ramp","value":0}`, "ramp //JERV/254/56/35 0"},
+		{"cbus/MYHOME/254/56/35/set", `{"command":"ramp","value":0}`, "ramp //MYHOME/254/56/35 0"},
 		{"cbus/set", "on 254/56/35", "on 254/56/35"},
 	} {
 		got, err := mqttCommand("cbus", tc.topic, []byte(tc.payload), path)
@@ -39,7 +39,7 @@ func TestMQTTJSONCommands(t *testing.T) {
 			t.Errorf("accepted %s as %q", payload, got)
 		}
 	}
-	for _, topic := range []string{"cbus/missing/set", "cbus/JERV/bedroom/tv/set", "other/JERV/bedroom/tv/set", "cbus/bedroom/tv", "cbus", "cbus/bedroom/tv/set/extra"} {
+	for _, topic := range []string{"cbus/missing/set", "cbus/MYHOME/bedroom/tv/set", "other/MYHOME/bedroom/tv/set", "cbus/bedroom/tv", "cbus", "cbus/bedroom/tv/set/extra"} {
 		if _, err := mqttCommand("cbus", topic, []byte(`{"command":"on"}`), path); err == nil {
 			t.Errorf("accepted %q", topic)
 		}
@@ -67,7 +67,7 @@ func TestForwardCommandsVerboseLogging(t *testing.T) {
 		bridge, server := net.Pipe()
 		ctx, cancel := context.WithCancel(context.Background())
 		commands := make(chan commandRequest, 1)
-		commands <- commandRequest{command: "ramp //JERV/254/56/35 255 4"}
+		commands <- commandRequest{command: "ramp //MYHOME/254/56/35 255 4"}
 		done := make(chan error, 1)
 		go func() { done <- forwardCommands(ctx, bridge, commands, verbose, func() error { return nil }) }()
 		server.SetDeadline(time.Now().Add(2 * time.Second))
@@ -83,10 +83,10 @@ func TestForwardCommandsVerboseLogging(t *testing.T) {
 			t.Fatal("command worker did not stop")
 		}
 		log.SetOutput(previous)
-		if writeErr != nil || readErr != nil || replyErr != nil || got != "ramp //JERV/254/56/35 255 4\r\n" {
+		if writeErr != nil || readErr != nil || replyErr != nil || got != "ramp //MYHOME/254/56/35 255 4\r\n" {
 			t.Fatalf("command %q: %v %v %v", got, writeErr, readErr, replyErr)
 		}
-		if strings.Contains(output.String(), "C-Gate command: ramp //JERV/254/56/35 255 4") != verbose {
+		if strings.Contains(output.String(), "C-Gate command: ramp //MYHOME/254/56/35 255 4") != verbose {
 			t.Fatalf("verbose=%v logs=%q", verbose, output.String())
 		}
 	}

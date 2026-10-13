@@ -85,7 +85,7 @@ func TestForwardCommands(t *testing.T) {
 	commands := make(chan commandRequest, 3)
 	replies := make(chan []string, 1)
 	commands <- commandRequest{command: "noop"}
-	commands <- commandRequest{command: "get //JERV/254/56/22 name", replies: replies}
+	commands <- commandRequest{command: "get //MYHOME/254/56/22 name", replies: replies}
 	commands <- commandRequest{command: "on 1/56/1"}
 	done := make(chan error, 1)
 	go func() { done <- forwardCommands(ctx, bridge, commands, false, func() error { return nil }) }()
@@ -94,14 +94,14 @@ func TestForwardCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := bufio.NewReader(server)
-	for _, want := range []string{"noop\r\n", "get //JERV/254/56/22 name\r\n", "on 1/56/1\r\n"} {
+	for _, want := range []string{"noop\r\n", "get //MYHOME/254/56/22 name\r\n", "on 1/56/1\r\n"} {
 		got, err := reader.ReadString('\n')
 		if err != nil || got != want {
 			t.Fatalf("got %q, %v; want %q", got, err, want)
 		}
 		reply := "200-first line\r\n200 OK\r\n"
 		if strings.HasPrefix(want, "get ") {
-			reply = "300-//JERV/254/56/22: name=Living Room\r\n200 OK\r\n"
+			reply = "300-//MYHOME/254/56/22: name=Living Room\r\n200 OK\r\n"
 		}
 		if _, err := io.WriteString(server, reply); err != nil {
 			t.Fatal(err)

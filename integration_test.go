@@ -27,7 +27,7 @@ func testListener(t *testing.T) net.Listener {
 
 func TestBridgeStatusControlIntegration(t *testing.T) {
 	devicesPath := filepath.Join(t.TempDir(), "devices.yaml")
-	if err := os.WriteFile(devicesPath, []byte("- address: //JERV/254/56/29\n  friendly_name: room\n- address: //JERV/254/228/1/2\n  friendly_name: sensor\n- address: //JERV/254/208\n  friendly_name: alarm\n"), 0600); err != nil {
+	if err := os.WriteFile(devicesPath, []byte("- address: //MYHOME/254/56/29\n  friendly_name: room\n- address: //MYHOME/254/228/1/2\n  friendly_name: sensor\n- address: //MYHOME/254/208\n  friendly_name: alarm\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	broker, events, cgate := testListener(t), testListener(t), testListener(t)
@@ -109,17 +109,17 @@ func TestBridgeStatusControlIntegration(t *testing.T) {
 			wires <- command
 			reply := "200 OK\r\n"
 			switch command {
-			case "get //JERV/254/56/29 level":
-				reply = "300-//JERV/254/56/29: level=128\r\n200 OK\r\n"
-			case "get //JERV/254/228/1/2 data":
-				reply = "300 //JERV/254/228/1/2: data=235,-1,0,100\r\n"
-			case "get //JERV/254/208 armstate":
-				reply = "300 //JERV/254/208: ArmState=0\r\n"
-			case "tree //JERV/254":
-				reply = "320-//JERV/254/56/29 ($1d) level=128 state=ok\r\n320 -end-\r\n"
-			case "terminate_ramp //JERV/254/56/29":
+			case "get //MYHOME/254/56/29 level":
+				reply = "300-//MYHOME/254/56/29: level=128\r\n200 OK\r\n"
+			case "get //MYHOME/254/228/1/2 data":
+				reply = "300 //MYHOME/254/228/1/2: data=235,-1,0,100\r\n"
+			case "get //MYHOME/254/208 armstate":
+				reply = "300 //MYHOME/254/208: ArmState=0\r\n"
+			case "tree //MYHOME/254":
+				reply = "320-//MYHOME/254/56/29 ($1d) level=128 state=ok\r\n320 -end-\r\n"
+			case "terminate_ramp //MYHOME/254/56/29":
 				reply = "400 Syntax error\r\n"
-			case "on //JERV/254/56/29":
+			case "on //MYHOME/254/56/29":
 				reply = "408 Operation failed\r\n"
 			}
 			if _, err := fmt.Fprint(conn, reply); err != nil {
@@ -172,7 +172,7 @@ func TestBridgeStatusControlIntegration(t *testing.T) {
 	for len(wires) > 0 {
 		startup[<-wires] = true
 	}
-	for _, command := range []string{"get //JERV/254/56/29 level", "get //JERV/254/228/1/2 data", "get //JERV/254/208 armstate", "getstate //JERV/254", "tree //JERV/254", "security status_request //JERV/254/208 1", "security status_request //JERV/254/208 2"} {
+	for _, command := range []string{"get //MYHOME/254/56/29 level", "get //MYHOME/254/228/1/2 data", "get //MYHOME/254/208 armstate", "getstate //MYHOME/254", "tree //MYHOME/254", "security status_request //MYHOME/254/208 1", "security status_request //MYHOME/254/208 2"} {
 		if !startup[command] {
 			t.Errorf("missing startup command %s", command)
 		}
@@ -209,17 +209,17 @@ func TestBridgeStatusControlIntegration(t *testing.T) {
 	if p.Retain {
 		t.Fatal("command result retained")
 	}
-	if command := <-wires; command != "get //JERV/254/56/29 level" {
+	if command := <-wires; command != "get //MYHOME/254/56/29 level" {
 		t.Fatalf("retained command was executed: %s", command)
 	}
 	send("cbus/room/set", `{"command":"terminate_ramp"}`, false)
 	awaitPublish("cbus/room/result", func(p *packets.PublishPacket) bool {
 		return strings.HasPrefix(decodeStatus(t, string(p.Payload))["command"].(string), "terminate_ramp ")
 	})
-	if command := <-wires; command != "terminate_ramp //JERV/254/56/29" {
+	if command := <-wires; command != "terminate_ramp //MYHOME/254/56/29" {
 		t.Fatal(command)
 	}
-	if command := <-wires; command != "terminateramp //JERV/254/56/29" {
+	if command := <-wires; command != "terminateramp //MYHOME/254/56/29" {
 		t.Fatal(command)
 	}
 	send("cbus/room/set", `{"command":"on"}`, false)
@@ -230,12 +230,12 @@ func TestBridgeStatusControlIntegration(t *testing.T) {
 	send("cbus/room/set", `{"command":"scene"}`, false)
 	awaitPublish("cbus/room/result", func(p *packets.PublishPacket) bool { return strings.Contains(string(p.Payload), "unsupported") })
 	for _, tc := range []struct{ line, topic, kind string }{
-		{"lighting off //JERV/254/56/29", "cbus/room", "lighting"},
-		{"measurement data //JERV/254/228/1/2 241 -1 0", "cbus/sensor", "measurement"},
-		{"temperature broadcast //JERV/254/25/1 18.5", "cbus/JERV/254/25/1", "temperature"},
-		{"#security alarm_on //JERV/254/208 #sourceunit=10", "cbus/alarm/alarm", "security"},
-		{"20261012-100000 702 //JERV/254/208 [security] mains_restored sourceUnit=10", "cbus/alarm/mains", "security"},
-		{"clock date //JERV/254/223 2026-10-12 0", "cbus/JERV/254/223/date", "clock"},
+		{"lighting off //MYHOME/254/56/29", "cbus/room", "lighting"},
+		{"measurement data //MYHOME/254/228/1/2 241 -1 0", "cbus/sensor", "measurement"},
+		{"temperature broadcast //MYHOME/254/25/1 18.5", "cbus/MYHOME/254/25/1", "temperature"},
+		{"#security alarm_on //MYHOME/254/208 #sourceunit=10", "cbus/alarm/alarm", "security"},
+		{"20261012-100000 702 //MYHOME/254/208 [security] mains_restored sourceUnit=10", "cbus/alarm/mains", "security"},
+		{"clock date //MYHOME/254/223 2026-10-12 0", "cbus/MYHOME/254/223/date", "clock"},
 	} {
 		if _, err := fmt.Fprintln(stream, tc.line); err != nil {
 			t.Fatal(err)
