@@ -149,7 +149,7 @@ func TestDeviceStatusCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ target, payload, want string }{
-		{"room", `{"command":"get_level"}`, "get //JERV/254/56/29 level"},
+		{"room", `{"command":"get_brightness"}`, "get //JERV/254/56/29 level"},
 		{"room", `{"type":"lighting","command":"terminate_ramp"}`, "terminate_ramp //JERV/254/56/29"},
 		{"JERV/254/228/1/2", `{"command":"get_data"}`, "get //JERV/254/228/1/2 data"},
 		{"JERV/254/25/1", `{"command":"get_temperature"}`, "get //JERV/254/25/1 temperature"},
@@ -164,7 +164,7 @@ func TestDeviceStatusCommands(t *testing.T) {
 		}
 	}
 	for _, tc := range []struct{ target, payload string }{
-		{"room", `{"command":"get_level","value":1}`}, {"room", `{"command":"arm","mode":"away"}`},
+		{"room", `{"command":"get_brightness","value":1}`}, {"room", `{"command":"arm","mode":"away"}`},
 		{"JERV/254/208/7", `{"command":"arm","mode":"away"}`}, {"JERV/254/208", `{"command":"arm","mode":"disarm"}`},
 		{"JERV/254/208", `{"command":"status_request","value":3}`}, {"JERV/254/228/1", `{"command":"get_data"}`},
 		{"JERV/254/202/1", `{"command":"event","value":2}`}, {"room", `{"type":"security","command":"on"}`},
@@ -204,6 +204,9 @@ func TestQueryRepliesAndCommandResults(t *testing.T) {
 	}
 	if len(published) != 2 || published[0].topic != "cbus/room" || !published[0].retain || published[1].retain || decodeStatus(t, published[1].payload)["ok"] != true {
 		t.Fatal(published)
+	}
+	if status := decodeStatus(t, published[0].payload); status["command"] != "brightness" || status["value"] != float64(128) {
+		t.Fatalf("unexpected lighting state: %#v", status)
 	}
 	for _, replies := range [][]string{{"400 Bad object"}, {"300-//JERV/254/56/29: level=128", "408 Failed"}, {"300 //JERV/254/56/29: level=-1"}, {"200 OK"}} {
 		published = nil

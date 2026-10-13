@@ -97,6 +97,9 @@ func (m *eventMapper) messageBody(line string) (string, string, error) {
 		Value   *float64 `json:"value,omitempty"`
 		Time    *float64 `json:"time,omitempty"` // Seconds.
 	}{Type: fields[0], Command: fields[1]}
+	if status.Command == "level" {
+		status.Command = "brightness"
+	}
 	if len(fields) > 5 {
 		return "", "", fmt.Errorf("too many lighting event arguments: %s", line)
 	}

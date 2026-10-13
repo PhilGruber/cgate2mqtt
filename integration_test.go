@@ -197,8 +197,10 @@ func TestBridgeStatusControlIntegration(t *testing.T) {
 		}
 	}
 	send("cbus/room/set", `{"command":"on"}`, true)
-	send("cbus/room/set", `{"command":"get_level"}`, false)
-	p := awaitPublish("cbus/room", func(p *packets.PublishPacket) bool { return decodeStatus(t, string(p.Payload))["command"] == "level" })
+	send("cbus/room/set", `{"command":"get_brightness"}`, false)
+	p := awaitPublish("cbus/room", func(p *packets.PublishPacket) bool {
+		return decodeStatus(t, string(p.Payload))["command"] == "brightness"
+	})
 	if !p.Retain || decodeStatus(t, string(p.Payload))["value"] != float64(128) {
 		t.Fatal("query state not retained")
 	}

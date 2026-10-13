@@ -154,7 +154,7 @@ func queryMessages(command deviceCommand, lines []string) ([]string, error) {
 	case "level":
 		level, err := strconv.Atoi(value)
 		if err != nil || level < 0 || level > 255 {
-			return nil, fmt.Errorf("lighting level is unknown or invalid")
+			return nil, fmt.Errorf("lighting brightness is unknown or invalid")
 		}
 		return []string{"lighting level " + address + " " + value}, nil
 	case "temperature":
@@ -213,7 +213,7 @@ func startupCommands(devices []device, configuredNetworks string) ([]deviceComma
 		address := d.Address
 		switch applicationType(p[2]) {
 		case "lighting":
-			request.Command = "get_level"
+			request.Command = "get_brightness"
 		case "temperature":
 			request.Command = "get_temperature"
 		case "measurement":

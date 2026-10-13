@@ -97,11 +97,11 @@ func buildDeviceCommand(address string, r deviceRequest) (deviceCommand, error) 
 			return result, fmt.Errorf("lighting requires a group address")
 		}
 		switch r.Command {
-		case "on", "off", "terminate_ramp", "get_level":
+		case "on", "off", "terminate_ramp", "get_brightness", "get_level":
 			if !noValues() {
 				return result, fmt.Errorf("%s does not accept value, time or mode", r.Command)
 			}
-			if r.Command == "get_level" {
+			if r.Command == "get_brightness" || r.Command == "get_level" {
 				result.wire, result.parameter = "get "+address+" level", "level"
 			} else {
 				result.wire = r.Command + " " + address
@@ -214,7 +214,7 @@ func rawDeviceCommand(payload string) (deviceCommand, error) {
 		if len(f) != 3 {
 			return deviceCommand{}, fmt.Errorf("get requires one supported status parameter")
 		}
-		r.Command = map[string]string{"level": "get_level", "data": "get_data", "temperature": "get_temperature", "armstate": "get_arm_state"}[strings.ToLower(f[2])]
+		r.Command = map[string]string{"brightness": "get_brightness", "level": "get_brightness", "data": "get_data", "temperature": "get_temperature", "armstate": "get_arm_state"}[strings.ToLower(f[2])]
 		if r.Command == "" {
 			return deviceCommand{}, fmt.Errorf("unsupported status parameter")
 		}
